@@ -1,14 +1,15 @@
 use chrono::{Duration, Local, NaiveDateTime, Utc};
 use rand::Rng;
 use serenity::all::{
-    CreateCommand, CreateEmbed, CreateInteractionResponse, CreateInteractionResponseMessage,
+    CommandInteraction, ComponentInteraction, CreateCommand, CreateEmbed, CreateEmbedFooter, CreateInteractionResponse, CreateInteractionResponseMessage
 };
 use serenity::async_trait;
-use serenity::builder::CreateCommandOption;
-use serenity::model::application::{CommandInteraction, CommandOptionType, Interaction};
+use serenity::builder::{CreateCommandOption, CreateSelectMenu, CreateSelectMenuOption};
+use serenity::model::application::{CommandOptionType, Interaction};
 use serenity::model::gateway::Ready;
+use serenity::model::id::UserId;
 use serenity::prelude::*;
-use sqlx::{migrate::MigrateDatabase, Connection, Sqlite, SqliteConnection};
+use sqlx::{migrate::MigrateDatabase, sqlite::SqlitePoolOptions, Pool, Sqlite};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -21,15 +22,19 @@ const ONE_DAY: u64 = 86400; // seconds in a day
 struct Handler;
 
 struct PvpRequest {
-    challenger_id: u64,
-    challenged_id: u64,
+    challenger_id: UserId,
+    challenged_id: UserId,
     bet: i32,
     created_at: u64,
 }
 
 struct Bot {
-    database: RwLock<SqliteConnection>,
+    database: Pool<Sqlite>,
     pvp_requests: RwLock<HashMap<String, PvpRequest>>,
+}
+
+impl TypeMapKey for Bot {
+    type Value = Arc<Bot>;
 }
 
 #[async_trait]
@@ -43,13 +48,14 @@ impl EventHandler for Handler {
                 "accept" => handle_accept_command(&ctx, &command).await,
                 "decline" => handle_decline_command(&ctx, &command).await,
                 "stats" => handle_stats_command(&ctx, &command).await,
-                _ => "Not implemented".to_string(),
+                _ => CreateInteractionResponse::Message(
+                    CreateInteractionResponseMessage::new()
+                        .content("Not implemented")
+                        .ephemeral(true),
+                ),
             };
 
-            if let Err(why) = command
-                .create_response(&ctx.http, content)
-                .await
-            {
+            if let Err(why) = command.create_response(&ctx.http, content).await {
                 println!("Cannot respond to slash command: {why}");
             }
         }
@@ -58,7 +64,7 @@ impl EventHandler for Handler {
     async fn ready(&self, ctx: Context, ready: Ready) {
         println!("{} is connected!", ready.user.name);
 
-        // Register commands
+        // Register commands globally
         let commands = vec![
             CreateCommand::new("grow")
                 .description("Grow your cucumber daily"),
@@ -80,7 +86,8 @@ impl EventHandler for Handler {
                         "bet",
                         "The amount of cm you want to bet",
                     )
-                    .required(true),
+                    .required(true)
+                    .min_int_value(1),
                 ),
             CreateCommand::new("accept")
                 .description("Accept a PvP challenge"),
@@ -90,10 +97,8 @@ impl EventHandler for Handler {
                 .description("View your dick stats"),
         ];
 
-        for guild in ready.guilds {
-            if let Err(why) = serenity::builder::CreateApplicationCommands::set_global_commands(&ctx.http, commands.clone()).await {
-                println!("Failed to set command for guild {}: {}", guild.id, why);
-            }
+        if let Err(why) = ctx.http.create_global_commands(&commands).await {
+            println!("Error creating global commands: {why}");
         }
 
         // Start daily dick of the day election
@@ -129,8 +134,6 @@ async fn daily_dick_of_the_day(ctx: Context) {
         };
 
         for guild in guilds {
-            let mut conn = bot.database.write().await;
-            
             // Get active users in the guild
             let active_users = match sqlx::query!(
                 "SELECT user_id, length FROM dicks
@@ -138,7 +141,7 @@ async fn daily_dick_of_the_day(ctx: Context) {
                  AND last_grow > datetime('now', '-7 days')",
                 guild.id.to_string()
             )
-            .fetch_all(&mut *conn)
+            .fetch_all(&bot.database)
             .await {
                 Ok(users) => users,
                 Err(why) => {
@@ -166,7 +169,7 @@ async fn daily_dick_of_the_day(ctx: Context) {
                 winner.user_id,
                 guild.id.to_string()
             )
-            .execute(&mut *conn)
+            .execute(&bot.database)
             .await {
                 Ok(_) => (),
                 Err(why) => {
@@ -176,7 +179,7 @@ async fn daily_dick_of_the_day(ctx: Context) {
             };
             
             // Announce the winner
-            let winner_user = match ctx.http.get_user(winner.user_id.parse::<u64>().unwrap_or(0)).await {
+            let winner_user = match UserId::new(winner.user_id.parse::<u64>().unwrap_or_default()).to_user(&ctx).await {
                 Ok(user) => user,
                 Err(why) => {
                     println!("Error fetching user: {:?}", why);
@@ -184,9 +187,33 @@ async fn daily_dick_of_the_day(ctx: Context) {
                 }
             };
             
-            let default_channel = match guild.id.to_guild_cached(&ctx).await {
-                Some(guild) => guild.system_channel_id.unwrap_or_else(|| guild.channels.keys().next().copied().unwrap()),
-                None => continue,
+            let guild_data = match ctx.http.get_guild(guild.id).await {
+                Ok(g) => g,
+                Err(why) => {
+                    println!("Error fetching guild: {:?}", why);
+                    continue;
+                }
+            };
+            
+            let default_channel = match guild_data.system_channel_id {
+                Some(channel) => channel,
+                None => {
+                    // If no system channel, try to find any text channel
+                    let channels = match ctx.http.get_channels(guild.id).await {
+                        Ok(channels) => channels,
+                        Err(why) => {
+                            println!("Error getting channels: {:?}", why);
+                            continue;
+                        }
+                    };
+                    
+                    let text_channel = channels.iter().find(|c| c.kind == serenity::model::channel::ChannelType::Text);
+                    if let Some(channel) = text_channel {
+                        channel.id
+                    } else {
+                        continue;
+                    }
+                }
             };
             
             let embed = CreateEmbed::new()
@@ -201,10 +228,7 @@ async fn daily_dick_of_the_day(ctx: Context) {
                 .thumbnail(winner_user.face())
                 .footer(|f| f.text("May your schlong be long and strong!"));
                 
-            if let Err(why) = default_channel
-                .send_message(&ctx.http, |m| m.set_embed(embed))
-                .await
-            {
+            if let Err(why) = default_channel.send_message(&ctx.http, |m| m.set_embed(embed)).await {
                 println!("Error sending Dick of the Day announcement: {:?}", why);
             }
         }
@@ -214,7 +238,6 @@ async fn daily_dick_of_the_day(ctx: Context) {
 async fn handle_grow_command(ctx: &Context, command: &CommandInteraction) -> CreateInteractionResponse {
     let data = ctx.data.read().await;
     let bot = data.get::<Bot>().unwrap();
-    let mut conn = bot.database.write().await;
     
     let user_id = command.user.id.to_string();
     let guild_id = command.guild_id.unwrap().to_string();
@@ -224,7 +247,7 @@ async fn handle_grow_command(ctx: &Context, command: &CommandInteraction) -> Cre
         "SELECT last_grow FROM dicks WHERE user_id = ? AND guild_id = ?",
         user_id, guild_id
     )
-    .fetch_optional(&mut *conn)
+    .fetch_optional(&bot.database)
     .await {
         Ok(Some(record)) => {
             let last_grow = NaiveDateTime::parse_from_str(&record.last_grow, "%Y-%m-%d %H:%M:%S").unwrap_or_default();
@@ -260,7 +283,7 @@ async fn handle_grow_command(ctx: &Context, command: &CommandInteraction) -> Cre
                  VALUES (?, ?, 0, datetime('now'), 0)",
                 user_id, guild_id
             )
-            .execute(&mut *conn)
+            .execute(&bot.database)
             .await {
                 Ok(_) => (),
                 Err(why) => println!("Error creating user: {:?}", why),
@@ -291,7 +314,7 @@ async fn handle_grow_command(ctx: &Context, command: &CommandInteraction) -> Cre
          WHERE user_id = ? AND guild_id = ?",
         growth, user_id, guild_id
     )
-    .execute(&mut *conn)
+    .execute(&bot.database)
     .await {
         Ok(_) => (),
         Err(why) => {
@@ -313,7 +336,7 @@ async fn handle_grow_command(ctx: &Context, command: &CommandInteraction) -> Cre
         "SELECT length FROM dicks WHERE user_id = ? AND guild_id = ?",
         user_id, guild_id
     )
-    .fetch_one(&mut *conn)
+    .fetch_one(&bot.database)
     .await {
         Ok(record) => record.length,
         Err(why) => {
@@ -384,7 +407,6 @@ async fn handle_grow_command(ctx: &Context, command: &CommandInteraction) -> Cre
 async fn handle_top_command(ctx: &Context, command: &CommandInteraction) -> CreateInteractionResponse {
     let data = ctx.data.read().await;
     let bot = data.get::<Bot>().unwrap();
-    let mut conn = bot.database.write().await;
     
     let guild_id = command.guild_id.unwrap().to_string();
     
@@ -395,7 +417,7 @@ async fn handle_top_command(ctx: &Context, command: &CommandInteraction) -> Crea
          ORDER BY length DESC LIMIT 10",
         guild_id
     )
-    .fetch_all(&mut *conn)
+    .fetch_all(&bot.database)
     .await {
         Ok(users) => users,
         Err(why) => {
@@ -435,7 +457,7 @@ async fn handle_top_command(ctx: &Context, command: &CommandInteraction) -> Crea
             _ => "🔹",
         };
         
-        let username = match ctx.http.get_user(user.user_id.parse::<u64>().unwrap_or(0)).await {
+        let username = match UserId::new(user.user_id.parse::<u64>().unwrap_or_default()).to_user(&ctx).await {
             Ok(user) => user.name,
             Err(_) => "Unknown User".to_string(),
         };
@@ -458,7 +480,7 @@ async fn handle_top_command(ctx: &Context, command: &CommandInteraction) -> Crea
     
     // Add funny comment about the winner
     if !top_users.is_empty() {
-        let winner_name = match ctx.http.get_user(top_users[0].user_id.parse::<u64>().unwrap_or(0)).await {
+        let winner_name = match UserId::new(top_users[0].user_id.parse::<u64>().unwrap_or_default()).to_user(&ctx).await {
             Ok(user) => user.name,
             Err(_) => "Unknown User".to_string(),
         };
@@ -495,9 +517,12 @@ async fn handle_pvp_command(ctx: &Context, command: &CommandInteraction) -> Crea
     let data = ctx.data.read().await;
     let bot = data.get::<Bot>().unwrap();
     
-    let challenger_id = command.user.id.0;
-    let challenged_id = command.data.options[0].value.as_user_id().unwrap().0;
-    let bet = command.data.options[1].value.as_i64().unwrap() as i32;
+    let options = &command.data.options;
+    let challenged_user = options[0].value.as_user_id().unwrap();
+    let bet = options[1].value.as_i64().unwrap() as i32;
+    
+    let challenger_id = command.user.id;
+    let challenged_id = challenged_user;
     
     // Validate bet
     if bet <= 0 {
@@ -525,12 +550,11 @@ async fn handle_pvp_command(ctx: &Context, command: &CommandInteraction) -> Crea
     }
     
     // Check if challenger has enough length
-    let mut conn = bot.database.write().await;
     let challenger_length = match sqlx::query!(
         "SELECT length FROM dicks WHERE user_id = ? AND guild_id = ?",
         challenger_id.to_string(), command.guild_id.unwrap().to_string()
     )
-    .fetch_optional(&mut *conn)
+    .fetch_optional(&bot.database)
     .await {
         Ok(Some(record)) => record.length,
         Ok(None) => 0, // New user
@@ -568,7 +592,7 @@ async fn handle_pvp_command(ctx: &Context, command: &CommandInteraction) -> Crea
         "SELECT length FROM dicks WHERE user_id = ? AND guild_id = ?",
         challenged_id.to_string(), command.guild_id.unwrap().to_string()
     )
-    .fetch_optional(&mut *conn)
+    .fetch_optional(&bot.database)
     .await {
         Ok(Some(record)) => record.length,
         Ok(None) => {
@@ -578,7 +602,7 @@ async fn handle_pvp_command(ctx: &Context, command: &CommandInteraction) -> Crea
                  VALUES (?, ?, 0, datetime('now', '-2 days'), 0)",
                 challenged_id.to_string(), command.guild_id.unwrap().to_string()
             )
-            .execute(&mut *conn)
+            .execute(&bot.database)
             .await {
                 Ok(_) => 0,
                 Err(why) => {
@@ -671,7 +695,7 @@ async fn handle_pvp_command(ctx: &Context, command: &CommandInteraction) -> Crea
 async fn handle_accept_command(ctx: &Context, command: &CommandInteraction) -> CreateInteractionResponse {
     let data = ctx.data.read().await;
     let bot = data.get::<Bot>().unwrap();
-    let user_id = command.user.id.0;
+    let user_id = command.user.id;
     
     // Check if there's a challenge for this user
     let mut pvp_requests = bot.pvp_requests.write().await;
@@ -727,12 +751,11 @@ async fn handle_accept_command(ctx: &Context, command: &CommandInteraction) -> C
             };
         
         // Update the database
-        let mut conn = bot.database.write().await;
         match sqlx::query!(
             "UPDATE dicks SET length = length + ? WHERE user_id = ? AND guild_id = ?",
             request.bet, winner_id.to_string(), command.guild_id.unwrap().to_string()
         )
-        .execute(&mut *conn)
+        .execute(&bot.database)
         .await {
             Ok(_) => (),
             Err(why) => println!("Error updating winner: {:?}", why),
@@ -742,7 +765,7 @@ async fn handle_accept_command(ctx: &Context, command: &CommandInteraction) -> C
             "UPDATE dicks SET length = length - ? WHERE user_id = ? AND guild_id = ?",
             request.bet, loser_id.to_string(), command.guild_id.unwrap().to_string()
         )
-        .execute(&mut *conn)
+        .execute(&bot.database)
         .await {
             Ok(_) => (),
             Err(why) => println!("Error updating loser: {:?}", why),
@@ -753,7 +776,7 @@ async fn handle_accept_command(ctx: &Context, command: &CommandInteraction) -> C
             "SELECT length FROM dicks WHERE user_id = ? AND guild_id = ?",
             winner_id.to_string(), command.guild_id.unwrap().to_string()
         )
-        .fetch_one(&mut *conn)
+        .fetch_one(&bot.database)
         .await {
             Ok(record) => record.length,
             Err(_) => 0,
@@ -763,7 +786,7 @@ async fn handle_accept_command(ctx: &Context, command: &CommandInteraction) -> C
             "SELECT length FROM dicks WHERE user_id = ? AND guild_id = ?",
             loser_id.to_string(), command.guild_id.unwrap().to_string()
         )
-        .fetch_one(&mut *conn)
+        .fetch_one(&bot.database)
         .await {
             Ok(record) => record.length,
             Err(_) => 0,
@@ -775,7 +798,7 @@ async fn handle_accept_command(ctx: &Context, command: &CommandInteraction) -> C
         } else if winner_roll - loser_roll > 20 {
             format!("{}'s dick clearly outclassed {}'s in this epic showdown!", winner_name, loser_name)
         } else if winner_roll - loser_roll > 5 {
-            format!("A close match, but {}'s dick had just enough extra length to claim victory!", winner_name, loser_name)
+            format!("A close match, but {}'s dick had just enough extra length to claim victory!", winner_name)
         } else {
             format!("That was incredibly close! {}'s dick barely edged out {}'s by a hair's width!", winner_name, loser_name)
         };
@@ -814,7 +837,7 @@ async fn handle_accept_command(ctx: &Context, command: &CommandInteraction) -> C
 async fn handle_decline_command(ctx: &Context, command: &CommandInteraction) -> CreateInteractionResponse {
     let data = ctx.data.read().await;
     let bot = data.get::<Bot>().unwrap();
-    let user_id = command.user.id.0;
+    let user_id = command.user.id;
     
     // Check if there's a challenge for this user
     let mut pvp_requests = bot.pvp_requests.write().await;
@@ -832,6 +855,8 @@ async fn handle_decline_command(ctx: &Context, command: &CommandInteraction) -> 
             Ok(user) => user.name,
             Err(_) => "Unknown User".to_string(),
         };
+
+        let footer = CreateEmbedFooter::new("Sometimes discretion is the better part of valor.");
         
         CreateInteractionResponse::Message(
             CreateInteractionResponseMessage::new()
@@ -843,7 +868,7 @@ async fn handle_decline_command(ctx: &Context, command: &CommandInteraction) -> 
                             challenger
                         ))
                         .color(0xE74C3C) // Red
-                        .footer(|f| f.text("Sometimes discretion is the better part of valor."))
+                        .footer(footer)
                 )
         )
     } else {
@@ -862,7 +887,6 @@ async fn handle_decline_command(ctx: &Context, command: &CommandInteraction) -> 
 async fn handle_stats_command(ctx: &Context, command: &CommandInteraction) -> CreateInteractionResponse {
     let data = ctx.data.read().await;
     let bot = data.get::<Bot>().unwrap();
-    let mut conn = bot.database.write().await;
     
     let user_id = command.user.id.to_string();
     let guild_id = command.guild_id.unwrap().to_string();
@@ -873,7 +897,7 @@ async fn handle_stats_command(ctx: &Context, command: &CommandInteraction) -> Cr
          WHERE user_id = ? AND guild_id = ?",
         user_id, guild_id
     )
-    .fetch_optional(&mut *conn)
+    .fetch_optional(&bot.database)
     .await {
         Ok(Some(stats)) => stats,
         Ok(None) => {
@@ -909,7 +933,7 @@ async fn handle_stats_command(ctx: &Context, command: &CommandInteraction) -> Cr
          )",
         guild_id, user_id, guild_id
     )
-    .fetch_one(&mut *conn)
+    .fetch_one(&bot.database)
     .await {
         Ok(record) => record.rank + 1, // +1 because we're counting users with MORE length
         Err(why) => {
@@ -979,13 +1003,19 @@ async fn main() {
         }
     }
     
-    let db = match SqliteConnection::connect(DATABASE_URL).await {
-        Ok(db) => db,
-        Err(e) => panic!("Error connecting to database: {}", e),
-    };
+    // Connect to the database using a connection pool
+    let database = SqlitePoolOptions::new()
+        .max_connections(5)
+        .connect_with(
+            sqlx::sqlite::SqliteConnectOptions::new()
+                .filename("dick_growth.db")
+                .create_if_missing(true),
+        )
+        .await
+        .expect("Couldn't connect to database");
     
     // Create table if it doesn't exist
-    match sqlx::query(
+    sqlx::query(
         "CREATE TABLE IF NOT EXISTS dicks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id TEXT NOT NULL,
@@ -996,14 +1026,17 @@ async fn main() {
             UNIQUE(user_id, guild_id)
         )"
     )
-    .execute(&db)
-    .await {
-        Ok(_) => println!("Created table"),
-        Err(e) => panic!("Error creating table: {}", e),
-    }
+    .execute(&database)
+    .await
+    .expect("Error creating table");
     
     // Initialize the bot
-    let intents = GatewayIntents::GUILD_MESSAGES | GatewayIntents::MESSAGE_CONTENT;
+    let intents = GatewayIntents::GUILD_MESSAGES | GatewayIntents::MESSAGE_CONTENT | GatewayIntents::GUILDS;
+    
+    let bot_data = Arc::new(Bot {
+        database,
+        pvp_requests: RwLock::new(HashMap::new()),
+    });
     
     let mut client = Client::builder(token, intents)
         .event_handler(Handler)
@@ -1012,21 +1045,11 @@ async fn main() {
     
     {
         let mut data = client.data.write().await;
-        data.insert::<Bot>(Arc::new(Bot {
-            database: RwLock::new(db),
-            pvp_requests: RwLock::new(HashMap::new()),
-        }));
+        data.insert::<Bot>(bot_data);
     }
     
     // Start the bot
     if let Err(why) = client.start().await {
         println!("An error occurred while running the client: {:?}", why);
     }
-}
-
-#[derive(Debug, Clone)]
-struct DailyTask;
-
-impl TypeMapKey for Bot {
-    type Value = Arc<Bot>;
 }
