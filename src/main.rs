@@ -1,7 +1,7 @@
 use chrono::{Duration, Local, NaiveDateTime, Utc};
 use rand::Rng;
 use serenity::all::{
-    CommandInteraction, ComponentInteraction, CreateCommand, CreateEmbed, CreateEmbedFooter, CreateInteractionResponse, CreateInteractionResponseMessage
+    CommandInteraction, ComponentInteraction, CreateCommand, CreateEmbed, CreateEmbedFooter, CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, MessageBuilder
 };
 use serenity::async_trait;
 use serenity::builder::{CreateCommandOption, CreateSelectMenu, CreateSelectMenuOption};
@@ -16,7 +16,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::RwLock;
 use tokio::time::{self, sleep};
 
-const DATABASE_URL: &str = "sqlite://dick_growth.db";
+const DATABASE_URL: &str = "database.sqlite";
 const ONE_DAY: u64 = 86400; // seconds in a day
 
 struct Handler;
@@ -24,7 +24,7 @@ struct Handler;
 struct PvpRequest {
     challenger_id: UserId,
     challenged_id: UserId,
-    bet: i32,
+    bet: i64,
     created_at: u64,
 }
 
@@ -226,9 +226,9 @@ async fn daily_dick_of_the_day(ctx: Context) {
                 .field("Bonus Growth", format!("+{} cm", bonus), true)
                 .field("New Total", format!("{} cm", winner.length + bonus), true)
                 .thumbnail(winner_user.face())
-                .footer(|f| f.text("May your schlong be long and strong!"));
+                .footer(CreateEmbedFooter::new("May your schlong be long and strong!"));
                 
-            if let Err(why) = default_channel.send_message(&ctx.http, |m| m.set_embed(embed)).await {
+            if let Err(why) = default_channel.send_message(&ctx.http, CreateMessage::new().add_embed(embed)).await {
                 println!("Error sending Dick of the Day announcement: {:?}", why);
             }
         }
@@ -269,7 +269,7 @@ async fn handle_grow_command(ctx: &Context, command: &CommandInteraction) -> Cre
                                     time_left.num_minutes() % 60
                                 ))
                                 .color(0xFF5733)
-                                .footer(|f| f.text("Patience is a virtue... especially for your little buddy."))
+                                .footer(CreateEmbedFooter::new("Patience is a virtue... especially for your little buddy."))
                         )
                 );
             }
@@ -399,7 +399,7 @@ async fn handle_grow_command(ctx: &Context, command: &CommandInteraction) -> Cre
                     .title(title)
                     .description(description)
                     .color(color)
-                    .footer(|f| f.text("Remember: it's not about the size, it's about... actually, it is about the size."))
+                    .footer(CreateEmbedFooter::new("Remember: it's not about the size, it's about... actually, it is about the size."))
             )
     )
 }
@@ -508,7 +508,7 @@ async fn handle_top_command(ctx: &Context, command: &CommandInteraction) -> Crea
                     .title("🍆 Dick Leaderboard 🏆")
                     .description(description)
                     .color(0x9B59B6) // Purple
-                    .footer(|f| f.text("Use /grow daily to increase your length!"))
+                    .footer(CreateEmbedFooter::new("Use /grow daily to increase your length!"))
             )
     )
 }
@@ -519,7 +519,7 @@ async fn handle_pvp_command(ctx: &Context, command: &CommandInteraction) -> Crea
     
     let options = &command.data.options;
     let challenged_user = options[0].value.as_user_id().unwrap();
-    let bet = options[1].value.as_i64().unwrap() as i32;
+    let bet = options[1].value.as_i64().unwrap();
     
     let challenger_id = command.user.id;
     let challenged_id = challenged_user;
@@ -687,7 +687,7 @@ async fn handle_pvp_command(ctx: &Context, command: &CommandInteraction) -> Crea
                         challenger, challenged, bet
                     ))
                     .color(0x3498DB) // Blue
-                    .footer(|f| f.text("May the longest dong win!"))
+                    .footer(CreateEmbedFooter::new("May the longest dong win!"))
             )
     )
 }
@@ -802,7 +802,7 @@ async fn handle_accept_command(ctx: &Context, command: &CommandInteraction) -> C
         } else {
             format!("That was incredibly close! {}'s dick barely edged out {}'s by a hair's width!", winner_name, loser_name)
         };
-        
+
         CreateInteractionResponse::Message(
             CreateInteractionResponseMessage::new()
                 .add_embed(
@@ -818,7 +818,7 @@ async fn handle_accept_command(ctx: &Context, command: &CommandInteraction) -> C
                             taunt
                         ))
                         .color(0x2ECC71) // Green
-                        .footer(|f| f.text("Size DOES matter after all!"))
+                        .footer(CreateEmbedFooter::new("Size DOES matter after all!"))
                 )
         )
     } else {
@@ -855,8 +855,6 @@ async fn handle_decline_command(ctx: &Context, command: &CommandInteraction) -> 
             Ok(user) => user.name,
             Err(_) => "Unknown User".to_string(),
         };
-
-        let footer = CreateEmbedFooter::new("Sometimes discretion is the better part of valor.");
         
         CreateInteractionResponse::Message(
             CreateInteractionResponseMessage::new()
@@ -868,7 +866,7 @@ async fn handle_decline_command(ctx: &Context, command: &CommandInteraction) -> 
                             challenger
                         ))
                         .color(0xE74C3C) // Red
-                        .footer(footer)
+                        .footer(CreateEmbedFooter::new("Sometimes discretion is the better part of valor."))
                 )
         )
     } else {
@@ -984,7 +982,7 @@ async fn handle_stats_command(ctx: &Context, command: &CommandInteraction) -> Cr
                     .field("Dick of the Day", format!("**{} time(s)**", user_stats.dick_of_day_count), true)
                     .field("Growth Status", growth_status, false)
                     .field("Professional Assessment", length_comment, false)
-                    .footer(|f| f.text("Remember to /grow daily for maximum results!"))
+                    .footer(CreateEmbedFooter::new("Remember to /grow daily for maximum results!"))
             )
     )
 }
@@ -1008,27 +1006,11 @@ async fn main() {
         .max_connections(5)
         .connect_with(
             sqlx::sqlite::SqliteConnectOptions::new()
-                .filename("dick_growth.db")
+                .filename(DATABASE_URL)
                 .create_if_missing(true),
         )
         .await
         .expect("Couldn't connect to database");
-    
-    // Create table if it doesn't exist
-    sqlx::query(
-        "CREATE TABLE IF NOT EXISTS dicks (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id TEXT NOT NULL,
-            guild_id TEXT NOT NULL,
-            length INTEGER NOT NULL DEFAULT 0,
-            last_grow TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            dick_of_day_count INTEGER NOT NULL DEFAULT 0,
-            UNIQUE(user_id, guild_id)
-        )"
-    )
-    .execute(&database)
-    .await
-    .expect("Error creating table");
     
     // Initialize the bot
     let intents = GatewayIntents::GUILD_MESSAGES | GatewayIntents::MESSAGE_CONTENT | GatewayIntents::GUILDS;
