@@ -1,10 +1,11 @@
 use chrono::{Duration, Local, NaiveDateTime, Utc};
 use rand::Rng;
 use serenity::all::{
-    CommandInteraction, ComponentInteraction, CreateCommand, CreateEmbed, CreateEmbedFooter, CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, MessageBuilder
+    CommandInteraction, CreateCommand, CreateEmbed, CreateEmbedFooter, CreateInteractionResponse, 
+    CreateInteractionResponseMessage, CreateMessage
 };
 use serenity::async_trait;
-use serenity::builder::{CreateCommandOption, CreateSelectMenu, CreateSelectMenuOption};
+use serenity::builder::CreateCommandOption;
 use serenity::model::application::{CommandOptionType, Interaction};
 use serenity::model::gateway::Ready;
 use serenity::model::id::UserId;
@@ -14,7 +15,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::RwLock;
-use tokio::time::{self, sleep};
+use tokio::time::sleep;
 
 const DATABASE_URL: &str = "database.sqlite";
 const ONE_DAY: u64 = 86400; // seconds in a day
@@ -135,11 +136,12 @@ async fn daily_dick_of_the_day(ctx: Context) {
 
         for guild in guilds {
             // Get active users in the guild
+            let guild_id_str = guild.id.to_string();
             let active_users = match sqlx::query!(
                 "SELECT user_id, length FROM dicks
                  WHERE guild_id = ?
                  AND last_grow > datetime('now', '-7 days')",
-                guild.id.to_string()
+                guild_id_str
             )
             .fetch_all(&bot.database)
             .await {
@@ -162,12 +164,13 @@ async fn daily_dick_of_the_day(ctx: Context) {
             let bonus = rand::thread_rng().gen_range(3..=7);
             
             // Update DB
+            let guild_id_str = guild.id.to_string();
             match sqlx::query!(
                 "UPDATE dicks SET length = length + ?, dick_of_day_count = dick_of_day_count + 1
                  WHERE user_id = ? AND guild_id = ?",
                 bonus,
                 winner.user_id,
-                guild.id.to_string()
+                guild_id_str
             )
             .execute(&bot.database)
             .await {
@@ -243,7 +246,7 @@ async fn handle_grow_command(ctx: &Context, command: &CommandInteraction) -> Cre
     let guild_id = command.guild_id.unwrap().to_string();
     
     // Check if the user has grown today
-    let last_grow = match sqlx::query!(
+    let _last_grow = match sqlx::query!(
         "SELECT last_grow FROM dicks WHERE user_id = ? AND guild_id = ?",
         user_id, guild_id
     )
@@ -550,9 +553,11 @@ async fn handle_pvp_command(ctx: &Context, command: &CommandInteraction) -> Crea
     }
     
     // Check if challenger has enough length
+    let challenger_id_str = challenger_id.to_string();
+    let guild_id_str = command.guild_id.unwrap().to_string();
     let challenger_length = match sqlx::query!(
         "SELECT length FROM dicks WHERE user_id = ? AND guild_id = ?",
-        challenger_id.to_string(), command.guild_id.unwrap().to_string()
+        challenger_id_str, guild_id_str
     )
     .fetch_optional(&bot.database)
     .await {
@@ -588,19 +593,23 @@ async fn handle_pvp_command(ctx: &Context, command: &CommandInteraction) -> Crea
     }
     
     // Check if challenged user exists
+    let challenged_id_str = challenged_id.to_string();
+    let guild_id_str = command.guild_id.unwrap().to_string();
     let challenged_length = match sqlx::query!(
         "SELECT length FROM dicks WHERE user_id = ? AND guild_id = ?",
-        challenged_id.to_string(), command.guild_id.unwrap().to_string()
+        challenged_id_str, guild_id_str
     )
     .fetch_optional(&bot.database)
     .await {
         Ok(Some(record)) => record.length,
         Ok(None) => {
             // Auto-create the user
+            let challenged_id_str = challenged_id.to_string();
+            let guild_id_str = command.guild_id.unwrap().to_string();
             match sqlx::query!(
                 "INSERT INTO dicks (user_id, guild_id, length, last_grow, dick_of_day_count)
                  VALUES (?, ?, 0, datetime('now', '-2 days'), 0)",
-                challenged_id.to_string(), command.guild_id.unwrap().to_string()
+                challenged_id_str, guild_id_str
             )
             .execute(&bot.database)
             .await {
@@ -700,11 +709,20 @@ async fn handle_accept_command(ctx: &Context, command: &CommandInteraction) -> C
     // Check if there's a challenge for this user
     let mut pvp_requests = bot.pvp_requests.write().await;
     
-    let request = pvp_requests.iter()
-        .find(|(_, req)| req.challenged_id == user_id)
-        .map(|(k, v)| (k.clone(), v.clone()));
+    let request_key = pvp_requests.keys()
+        .find(|k| {
+            if let Some(req) = pvp_requests.get(*k) {
+                req.challenged_id == user_id
+            } else {
+                false
+            }
+        })
+        .cloned();
     
-    if let Some((request_id, request)) = request {
+    if let Some(request_id) = request_key {
+        // Get the request and remove it from the map
+        let request = pvp_requests.remove(&request_id).unwrap();
+        
         // Check if the request is still valid (less than 5 minutes old)
         let current_time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -712,8 +730,6 @@ async fn handle_accept_command(ctx: &Context, command: &CommandInteraction) -> C
             .as_secs();
         
         if current_time - request.created_at > 300 { // 5 minutes
-            pvp_requests.remove(&request_id);
-            
             return CreateInteractionResponse::Message(
                 CreateInteractionResponseMessage::new()
                     .add_embed(
@@ -725,8 +741,8 @@ async fn handle_accept_command(ctx: &Context, command: &CommandInteraction) -> C
             );
         }
         
-        // Remove the request
-        pvp_requests.remove(&request_id);
+        // Drop the lock before making async calls
+        drop(pvp_requests);
         
         // Get usernames
         let challenger = match ctx.http.get_user(request.challenger_id).await {
@@ -745,15 +761,17 @@ async fn handle_accept_command(ctx: &Context, command: &CommandInteraction) -> C
         
         let (winner_id, loser_id, winner_name, loser_name, winner_roll, loser_roll) = 
             if challenger_roll > challenged_roll {
-                (request.challenger_id, request.challenged_id, challenger, challenged, challenger_roll, challenged_roll)
+                (request.challenger_id, request.challenged_id, challenger.clone(), challenged.clone(), challenger_roll, challenged_roll)
             } else {
-                (request.challenged_id, request.challenger_id, challenged, challenger, challenged_roll, challenger_roll)
+                (request.challenged_id, request.challenger_id, challenged.clone(), challenger.clone(), challenged_roll, challenger_roll)
             };
         
         // Update the database
+        let winner_id_str = winner_id.to_string();
+        let guild_id_str = command.guild_id.unwrap().to_string();
         match sqlx::query!(
             "UPDATE dicks SET length = length + ? WHERE user_id = ? AND guild_id = ?",
-            request.bet, winner_id.to_string(), command.guild_id.unwrap().to_string()
+            request.bet, winner_id_str, guild_id_str
         )
         .execute(&bot.database)
         .await {
@@ -761,9 +779,11 @@ async fn handle_accept_command(ctx: &Context, command: &CommandInteraction) -> C
             Err(why) => println!("Error updating winner: {:?}", why),
         };
         
+        let loser_id_str = loser_id.to_string();
+        let guild_id_str = command.guild_id.unwrap().to_string();
         match sqlx::query!(
             "UPDATE dicks SET length = length - ? WHERE user_id = ? AND guild_id = ?",
-            request.bet, loser_id.to_string(), command.guild_id.unwrap().to_string()
+            request.bet, loser_id_str, guild_id_str
         )
         .execute(&bot.database)
         .await {
@@ -772,9 +792,11 @@ async fn handle_accept_command(ctx: &Context, command: &CommandInteraction) -> C
         };
         
         // Get updated lengths
+        let winner_id_str = winner_id.to_string();
+        let guild_id_str = command.guild_id.unwrap().to_string();
         let winner_length = match sqlx::query!(
             "SELECT length FROM dicks WHERE user_id = ? AND guild_id = ?",
-            winner_id.to_string(), command.guild_id.unwrap().to_string()
+            winner_id_str, guild_id_str
         )
         .fetch_one(&bot.database)
         .await {
@@ -782,9 +804,11 @@ async fn handle_accept_command(ctx: &Context, command: &CommandInteraction) -> C
             Err(_) => 0,
         };
         
+        let loser_id_str = loser_id.to_string();
+        let guild_id_str = command.guild_id.unwrap().to_string();
         let loser_length = match sqlx::query!(
             "SELECT length FROM dicks WHERE user_id = ? AND guild_id = ?",
-            loser_id.to_string(), command.guild_id.unwrap().to_string()
+            loser_id_str, guild_id_str
         )
         .fetch_one(&bot.database)
         .await {
@@ -842,13 +866,22 @@ async fn handle_decline_command(ctx: &Context, command: &CommandInteraction) -> 
     // Check if there's a challenge for this user
     let mut pvp_requests = bot.pvp_requests.write().await;
     
-    let request = pvp_requests.iter()
-        .find(|(_, req)| req.challenged_id == user_id)
-        .map(|(k, v)| (k.clone(), v.clone()));
+    let request_key = pvp_requests.keys()
+        .find(|k| {
+            if let Some(req) = pvp_requests.get(*k) {
+                req.challenged_id == user_id
+            } else {
+                false
+            }
+        })
+        .cloned();
     
-    if let Some((request_id, request)) = request {
-        // Remove the request
-        pvp_requests.remove(&request_id);
+    if let Some(request_id) = request_key {
+        // Get the request and remove it
+        let request = pvp_requests.remove(&request_id).unwrap();
+        
+        // Drop the lock before making async calls
+        drop(pvp_requests);
         
         // Get usernames
         let challenger = match ctx.http.get_user(request.challenger_id).await {
@@ -973,9 +1006,7 @@ async fn handle_stats_command(ctx: &Context, command: &CommandInteraction) -> Cr
             .add_embed(
                 CreateEmbed::new()
                     .title(format!("🍆 {}'s Dick Stats", command.user.name))
-                    .description(format!(
-                        "Here's everything you wanted to know about your cucumber (and probably some things you didn't):"
-                    ))
+                    .description("Here's everything you wanted to know about your cucumber (and probably some things you didn't):".to_string())
                     .color(0x9B59B6) // Purple
                     .field("Current Length", format!("**{} cm**", user_stats.length), true)
                     .field("Server Rank", format!("**#{}**", rank), true)
