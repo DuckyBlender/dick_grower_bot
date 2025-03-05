@@ -298,6 +298,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "dick_grower_bot"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "dotenv",
+ "rand",
+ "serenity",
+ "sqlx",
+ "tokio",
+]
+
+[[package]]
 name = "digest"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -307,18 +319,6 @@ dependencies = [
  "const-oid",
  "crypto-common",
  "subtle",
-]
-
-[[package]]
-name = "discord_dick_bot"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "dotenv",
- "rand",
- "serenity",
- "sqlx",
- "tokio",
 ]
 
 [[package]]
