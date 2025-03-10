@@ -1,6 +1,6 @@
-use chrono::{Duration, NaiveDateTime, Utc};
+use chrono::{Datelike, Duration, NaiveDateTime, Utc};
 use fern::colors::{Color, ColoredLevelConfig};
-use log::{error, info, LevelFilter};
+use log::{LevelFilter, error, info};
 use rand::Rng;
 use serenity::all::{
     ButtonStyle, CommandInteraction, CreateActionRow, CreateButton, CreateCommand, CreateEmbed,
@@ -43,6 +43,12 @@ impl EventHandler for Handler {
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
         match interaction {
             Interaction::Command(command) => {
+                // Log command invocation
+                info!(
+                    "Command invoked: /{} by user_id:{} ({}), guild_id:{:?}",
+                    command.data.name, command.user.id, command.user.name, command.guild_id
+                );
+
                 if command.guild_id.is_none() {
                     // Return message notifying that the bot is only available in guilds
                     if let Err(why) = command.create_response(&ctx.http,
@@ -63,8 +69,6 @@ impl EventHandler for Handler {
                         error!("Cannot respond to slash command for guild check: {}", why);
                     }
                 } else {
-                    info!("Command invoked: /{}", command.data.name);
-                    info!("User: {}, Guild: {:?}", command.user.name, command.guild_id);
                     // Check if interaction is in a guild
                     let content = match command.data.name.as_str() {
                         "grow" => handle_grow_command(&ctx, &command).await,
@@ -73,6 +77,7 @@ impl EventHandler for Handler {
                         "pvp" => handle_pvp_command(&ctx, &command).await,
                         "stats" => handle_stats_command(&ctx, &command).await,
                         "dickoftheday" => handle_dotd_command(&ctx, &command).await,
+                        "help" => handle_help_command(&ctx, &command).await,
                         _ => CreateInteractionResponse::Message(
                             CreateInteractionResponseMessage::new()
                                 .content("Not implemented")
@@ -116,7 +121,8 @@ impl EventHandler for Handler {
 
         // Register commands globally
         let commands = vec![
-            CreateCommand::new("grow").description("Grow your cucumber daily"),
+            CreateCommand::new("grow")
+                .description("Grow your cucumber daily (resets at 00:00 UTC)"),
             CreateCommand::new("top")
                 .description("Show the top players with the biggest weapons in this server"),
             CreateCommand::new("global")
@@ -133,14 +139,40 @@ impl EventHandler for Handler {
                     .min_int_value(1),
                 ),
             CreateCommand::new("stats").description("View your dick stats"),
-            CreateCommand::new("dickoftheday")
-                .description("Randomly select a Dick of the Day (once per day per server)"),
+            CreateCommand::new("dickoftheday").description(
+                "Randomly select a Dick of the Day (once per day per server, resets at 00:00 UTC)",
+            ),
+            CreateCommand::new("help").description("Show help information about the bot commands"),
         ];
 
         if let Err(why) = ctx.http.create_global_commands(&commands).await {
             error!("Error creating global commands: {}", why);
         }
     }
+}
+
+// Function to check if today is a new UTC day compared to the given date
+fn is_new_utc_day(last_time: &NaiveDateTime) -> bool {
+    let now = Utc::now().naive_utc();
+
+    // Get date parts
+    let now_date = (now.year(), now.month(), now.day());
+    let last_date = (last_time.year(), last_time.month(), last_time.day());
+
+    // If the date parts are different, it's a new day
+    now_date != last_date
+}
+
+// Function to get time until next UTC midnight
+fn time_until_next_utc_reset() -> Duration {
+    let now = Utc::now();
+    let tomorrow = (now + Duration::days(1))
+        .date_naive()
+        .and_hms_opt(0, 0, 0)
+        .unwrap();
+
+    let now_naive = now.naive_utc();
+    tomorrow - now_naive
 }
 
 async fn handle_grow_command(
@@ -165,12 +197,10 @@ async fn handle_grow_command(
         Ok(Some(record)) => {
             let last_grow = NaiveDateTime::parse_from_str(&record.last_grow, "%Y-%m-%d %H:%M:%S")
                 .unwrap_or_default();
-            let now = Utc::now().naive_utc();
 
-            // If less than 24 hours have passed
-            if now.signed_duration_since(last_grow) < Duration::days(1) {
-                let next_grow = last_grow + Duration::days(1);
-                let time_left = next_grow.signed_duration_since(now);
+            // Check if this is a new UTC day
+            if !is_new_utc_day(&last_grow) {
+                let time_left = time_until_next_utc_reset();
 
                 return CreateInteractionResponse::Message(
                     CreateInteractionResponseMessage::new()
@@ -178,7 +208,7 @@ async fn handle_grow_command(
                             CreateEmbed::new()
                                 .title("🕒 Hold up, speedy!")
                                 .description(format!(
-                                    "Your dick needs more time to recover! Try again in **{}h {}m**.\n\nExcessive stimulation might cause injuries, you know?",
+                                    "You've already grown your dick today! Try again tomorrow at 00:00 UTC.\n\n**Time until reset: {}h {}m**\n\nExcessive stimulation might cause injuries, you know?",
                                     time_left.num_hours(),
                                     time_left.num_minutes() % 60
                                 ))
@@ -1280,19 +1310,18 @@ async fn handle_stats_command(
         }
     };
 
-    // Calculate next growth time
+    // Calculate growth status
     let last_grow = NaiveDateTime::parse_from_str(&user_stats.last_grow, "%Y-%m-%d %H:%M:%S")
         .unwrap_or_default();
-    let now = Utc::now().naive_utc();
-    let next_grow = last_grow + Duration::days(1);
 
-    let can_grow = now.signed_duration_since(last_grow) >= Duration::days(1);
+    // Check if user can grow today
+    let can_grow = is_new_utc_day(&last_grow);
     let growth_status = if can_grow {
         "✅ You can grow now! Use /grow".to_string()
     } else {
-        let time_left = next_grow.signed_duration_since(now);
+        let time_left = time_until_next_utc_reset();
         format!(
-            "⏰ Next growth in: {}h {}m",
+            "⏰ Next growth at 00:00 UTC (in: {}h {}m)",
             time_left.num_hours(),
             time_left.num_minutes() % 60
         )
@@ -1380,12 +1409,10 @@ async fn handle_dotd_command(
         Ok(Some(record)) => {
             let last_dotd = NaiveDateTime::parse_from_str(&record.last_dotd, "%Y-%m-%d %H:%M:%S")
                 .unwrap_or_default();
-            let now = Utc::now().naive_utc();
 
-            // If less than 24 hours have passed
-            if now.signed_duration_since(last_dotd) < Duration::days(1) {
-                let next_dotd = last_dotd + Duration::days(1);
-                let time_left = next_dotd.signed_duration_since(now);
+            // Check if this is a new UTC day
+            if !is_new_utc_day(&last_dotd) {
+                let time_left = time_until_next_utc_reset();
 
                 return CreateInteractionResponse::Message(
                     CreateInteractionResponseMessage::new()
@@ -1393,7 +1420,7 @@ async fn handle_dotd_command(
                             CreateEmbed::new()
                                 .title("⏰ Dick of the Day Already Awarded!")
                                 .description(format!(
-                                    "This server has already crowned a Dick of the Day today!\n\nNext Dick of the Day in: **{}h {}m**",
+                                    "This server has already crowned a Dick of the Day today!\n\nNext Dick of the Day at 00:00 UTC (in: **{}h {}m**)",
                                     time_left.num_hours(),
                                     time_left.num_minutes() % 60
                                 ))
@@ -1402,7 +1429,7 @@ async fn handle_dotd_command(
                 );
             }
 
-            // If we reach here, enough time has passed and we can proceed
+            // If we reach here, it's a new day and we can proceed
         }
         Ok(None) => {
             // New guild, create a record with a date far in the past
@@ -1563,6 +1590,60 @@ async fn handle_dotd_command(
     )
 }
 
+async fn handle_help_command(
+    _ctx: &Context,
+    _command: &CommandInteraction,
+) -> CreateInteractionResponse {
+    CreateInteractionResponse::Message(
+        CreateInteractionResponseMessage::new()
+            .add_embed(
+                CreateEmbed::new()
+                    .title("🍆 Cucumber Bot Help Guide 🍆")
+                    .description(
+                        "Welcome to the Cucumber Bot - where size matters and every day is a new opportunity to grow! Below you'll find information about all the available commands:"
+                    )
+                    .color(0x9B59B6) // Purple
+                    .field(
+                        "/grow", 
+                        "Grow your cucumber once per day. Your length can increase or decrease randomly (-5 to +10 cm). The command resets at 00:00 UTC every day.", 
+                        false
+                    )
+                    .field(
+                        "/top", 
+                        "Shows the leaderboard of the biggest dicks in the current server.", 
+                        false
+                    )
+                    .field(
+                        "/global", 
+                        "Shows the leaderboard of the biggest dicks across all servers where the bot is used.", 
+                        false
+                    )
+                    .field(
+                        "/pvp", 
+                        "Start a dick measuring contest with someone. Enter the amount of centimeters you want to bet. If you win, you gain that length from your opponent. If you lose, you lose that length to them.", 
+                        false
+                    )
+                    .field(
+                        "/stats", 
+                        "View your dick stats including length, rank, win/loss record, and more.", 
+                        false
+                    )
+                    .field(
+                        "/dickoftheday", 
+                        "Randomly selects one active user to be the Dick of the Day, granting them a bonus of 5-10 cm. This command can only be used once per server per day (resets at 00:00 UTC).", 
+                        false
+                    )
+                    .field(
+                        "Daily Reset", 
+                        "Both the `/grow` command and `/dickoftheday` command reset at midnight UTC (00:00 UTC) every day.", 
+                        false
+                    )
+                    .footer(CreateEmbedFooter::new("May your cucumber grow long and prosperous! 🥒")),
+            )
+            .ephemeral(true),
+    )
+}
+
 #[tokio::main]
 async fn main() {
     // Initialize logger
@@ -1573,7 +1654,7 @@ async fn main() {
         .debug(Color::BrightCyan)
         .trace(Color::BrightBlack);
 
-        fern::Dispatch::new()
+    fern::Dispatch::new()
         .format(move |out, message, record| {
             out.finish(format_args!(
                 "[{} {} {}] {}",
@@ -1584,7 +1665,7 @@ async fn main() {
             ))
         })
         .level(LevelFilter::Warn)
-        .level_for(env!("CARGO_PKG_NAME"), LevelFilter::Debug)
+        .level_for(env!("CARGO_PKG_NAME"), LevelFilter::Info)
         .chain(std::io::stdout())
         .apply()
         .expect("Failed to initialize logger");
