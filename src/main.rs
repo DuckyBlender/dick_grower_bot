@@ -62,29 +62,33 @@ impl EventHandler for Handler {
                     ).await {
                         error!("Cannot respond to slash command for guild check: {}", why);
                     }
-                }
-                // Check if interaction is in a guild
-                let content = match command.data.name.as_str() {
-                    "grow" => handle_grow_command(&ctx, &command).await,
-                    "top" => handle_top_command(&ctx, &command).await,
-                    "global" => handle_global_command(&ctx, &command).await,
-                    "pvp" => handle_pvp_command(&ctx, &command).await,
-                    "stats" => handle_stats_command(&ctx, &command).await,
-                    "dickoftheday" => handle_dotd_command(&ctx, &command).await,
-                    _ => CreateInteractionResponse::Message(
-                        CreateInteractionResponseMessage::new()
-                            .content("Not implemented")
-                            .ephemeral(true),
-                    ),
-                };
+                } else {
+                    info!("Command invoked: /{}", command.data.name);
+                    info!("User: {}, Guild: {:?}", command.user.name, command.guild_id);
+                    // Check if interaction is in a guild
+                    let content = match command.data.name.as_str() {
+                        "grow" => handle_grow_command(&ctx, &command).await,
+                        "top" => handle_top_command(&ctx, &command).await,
+                        "global" => handle_global_command(&ctx, &command).await,
+                        "pvp" => handle_pvp_command(&ctx, &command).await,
+                        "stats" => handle_stats_command(&ctx, &command).await,
+                        "dickoftheday" => handle_dotd_command(&ctx, &command).await,
+                        _ => CreateInteractionResponse::Message(
+                            CreateInteractionResponseMessage::new()
+                                .content("Not implemented")
+                                .ephemeral(true),
+                        ),
+                    };
 
-                if let Err(why) = command.create_response(&ctx.http, content).await {
-                    error!("Cannot respond to slash command: {}", why);
+                    if let Err(why) = command.create_response(&ctx.http, content).await {
+                        error!("Cannot respond to slash command: {}", why);
+                    }
                 }
             }
             Interaction::Component(component) => {
                 // Handle button interactions
                 if component.data.custom_id.starts_with("pvp_accept:") {
+                    info!("Component interaction: {}", component.data.custom_id);
                     if let Err(why) = handle_pvp_accept(&ctx, &component).await {
                         error!("Error handling PVP accept: {}", why);
                         if let Err(e) = component
