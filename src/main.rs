@@ -12,6 +12,7 @@ use serenity::model::id::UserId;
 use serenity::prelude::*;
 use sqlx::SqlitePool;
 use sqlx::{Pool, Sqlite};
+use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::env;
 use std::sync::Arc;
@@ -612,10 +613,7 @@ async fn handle_top_command(
     )
 }
 
-async fn handle_global_command(
-    ctx: &Context,
-    _: &CommandInteraction,
-) -> CreateInteractionResponse {
+async fn handle_global_command(ctx: &Context, _: &CommandInteraction) -> CreateInteractionResponse {
     let data = ctx.data.read().await;
     let bot = data.get::<Bot>().unwrap();
 
@@ -1152,47 +1150,46 @@ async fn handle_pvp_accept(
     let challenger_roll = rand::thread_rng().gen_range(1..=100);
     let challenged_roll = rand::thread_rng().gen_range(1..=100);
 
-    let (winner_id, loser_id, winner_name, loser_name, winner_roll, loser_roll) =
-    if challenger_roll > challenged_roll {
-        (
+    let (winner_id, loser_id, winner_name, loser_name, winner_roll, loser_roll) = match challenger_roll.cmp(&challenged_roll) {
+        Ordering::Greater => (
             challenger_id,
             challenged_id,
             challenger.clone(),
             challenged.clone(),
             challenger_roll,
             challenged_roll,
-        )
-    } else if challenger_roll < challenged_roll {
-        (
+        ),
+        Ordering::Less => (
             challenged_id,
             challenger_id,
             challenged.clone(),
             challenger.clone(),
             challenged_roll,
             challenger_roll,
-        )
-    } else {
-        // It's a tie! Let's handle this with a special case
-        component.create_response(
-            &ctx.http,
-            CreateInteractionResponse::UpdateMessage(
-                CreateInteractionResponseMessage::new()
-                    .add_embed(
-                        CreateEmbed::new()
-                            .title("🤯 INCREDIBLE! It's a tie!")
-                            .description(format!(
-                                "The contest has concluded with an unbelievable outcome!\n\n**{}** rolled **{}**\n**{}** rolled **{}**\n\nBoth dicks measured EXACTLY the same! What are the odds?!\n\nThe bet has been returned to both competitors. No winners, no losers today!",
-                                challenger, challenger_roll,
-                                challenged, challenged_roll
-                            ))
-                            .color(0x9b59b6) // Purple for a tie
-                            .footer(CreateEmbedFooter::new("A moment that will go down in dick-measuring history!"))
-                    )
-                    .components(vec![]), // Remove the button
-            ),
-        ).await?;
-        
-        return Ok(());
+        ),
+        Ordering::Equal => {
+            // It's a tie! Let's handle this with a special case
+            component.create_response(
+                &ctx.http,
+                CreateInteractionResponse::UpdateMessage(
+                    CreateInteractionResponseMessage::new()
+                        .add_embed(
+                            CreateEmbed::new()
+                                .title("🤯 INCREDIBLE! It's a tie!")
+                                .description(format!(
+                                    "The contest has concluded with an unbelievable outcome!\n\n**{}** rolled **{}**\n**{}** rolled **{}**\n\nBoth dicks measured EXACTLY the same! What are the odds?!\n\nThe bet has been returned to both competitors. No winners, no losers today!",
+                                    challenger, challenger_roll,
+                                    challenged, challenged_roll
+                                ))
+                                .color(0x9b59b6) // Purple for a tie
+                                .footer(CreateEmbedFooter::new("A moment that will go down in dick-measuring history!"))
+                        )
+                        .components(vec![]), // Remove the button
+                ),
+            ).await?;
+    
+            return Ok(());
+        }
     };
 
     // Get previous streak
@@ -1497,7 +1494,8 @@ async fn handle_stats_command(
                         false
                     )
                     .field("Professional Assessment", length_comment, false)
-                    .footer(CreateEmbedFooter::new("Remember to /grow daily for maximum results!")),
+                    .thumbnail(command.user.face())
+                    .footer(CreateEmbedFooter::new("Remember to /grow every day for maximum results!")),
             )
             .ephemeral(true),
     )
@@ -1524,12 +1522,12 @@ async fn handle_dotd_command(
             let last_dotd = NaiveDateTime::parse_from_str(&record.last_dotd, "%Y-%m-%d %H:%M:%S")
                 .unwrap_or_default();
             let now = Utc::now().naive_utc();
-    
+
             // If less than 24 hours have passed
             if now.signed_duration_since(last_dotd) < Duration::days(1) {
                 let next_dotd = last_dotd + Duration::days(1);
                 let time_left = next_dotd.signed_duration_since(now);
-    
+
                 return CreateInteractionResponse::Message(
                     CreateInteractionResponseMessage::new()
                         .add_embed(
@@ -1544,9 +1542,9 @@ async fn handle_dotd_command(
                         )
                 );
             }
-            
+
             // If we reach here, enough time has passed and we can proceed
-        },
+        }
         Ok(None) => {
             // New guild, create a record with a date far in the past
             if let Err(why) = sqlx::query!(
@@ -1555,12 +1553,13 @@ async fn handle_dotd_command(
                 guild_id
             )
             .execute(&bot.database)
-            .await {
+            .await
+            {
                 println!("Error creating guild settings: {:?}", why);
             }
-            
+
             // No need to return an actual value, we can proceed
-        },
+        }
         Err(why) => {
             println!("Database error: {:?}", why);
             return CreateInteractionResponse::Message(
