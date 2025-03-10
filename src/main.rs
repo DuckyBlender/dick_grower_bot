@@ -1,4 +1,6 @@
 use chrono::{Duration, NaiveDateTime, Utc};
+use fern::colors::{Color, ColoredLevelConfig};
+use log::{error, info};
 use rand::Rng;
 use serenity::all::{
     ButtonStyle, CommandInteraction, CreateActionRow, CreateButton, CreateCommand, CreateEmbed,
@@ -43,7 +45,7 @@ impl EventHandler for Handler {
             Interaction::Command(command) => {
                 if command.guild_id.is_none() {
                     // Return message notifying that the bot is only available in guilds
-                    if let Err(why) = command.create_response(&ctx.http, 
+                    if let Err(why) = command.create_response(&ctx.http,
                         CreateInteractionResponse::Message(
                             CreateInteractionResponseMessage::new()
                                 .add_embed(
@@ -58,7 +60,7 @@ impl EventHandler for Handler {
                                 .ephemeral(true)
                         )
                     ).await {
-                        println!("Cannot respond to slash command for guild check: {why}");
+                        error!("Cannot respond to slash command for guild check: {}", why);
                     }
                 }
                 // Check if interaction is in a guild
@@ -77,14 +79,14 @@ impl EventHandler for Handler {
                 };
 
                 if let Err(why) = command.create_response(&ctx.http, content).await {
-                    println!("Cannot respond to slash command: {why}");
+                    error!("Cannot respond to slash command: {}", why);
                 }
             }
             Interaction::Component(component) => {
                 // Handle button interactions
                 if component.data.custom_id.starts_with("pvp_accept:") {
                     if let Err(why) = handle_pvp_accept(&ctx, &component).await {
-                        println!("Error handling PVP accept: {why}");
+                        error!("Error handling PVP accept: {}", why);
                         if let Err(e) = component
                             .create_response(
                                 &ctx.http,
@@ -96,7 +98,7 @@ impl EventHandler for Handler {
                             )
                             .await
                         {
-                            println!("Error responding to component interaction: {e}");
+                            error!("Error responding to component interaction: {}", e);
                         }
                     }
                 }
@@ -106,7 +108,7 @@ impl EventHandler for Handler {
     }
 
     async fn ready(&self, ctx: Context, ready: Ready) {
-        println!("{} is connected!", ready.user.name);
+        info!("{} is connected!", ready.user.name);
 
         // Register commands globally
         let commands = vec![
@@ -132,7 +134,7 @@ impl EventHandler for Handler {
         ];
 
         if let Err(why) = ctx.http.create_global_commands(&commands).await {
-            println!("Error creating global commands: {why}");
+            error!("Error creating global commands: {}", why);
         }
     }
 }
@@ -200,13 +202,15 @@ async fn handle_grow_command(
             .await
             {
                 Ok(_) => (),
-                Err(why) => println!("Error creating user: {:?}", why),
+                Err(why) => {
+                    error!("Error creating user: {:?}", why);
+                }
             };
 
             Utc::now().naive_utc()
         }
         Err(why) => {
-            println!("Database error: {:?}", why);
+            error!("Database error: {:?}", why);
             return CreateInteractionResponse::Message(
                 CreateInteractionResponseMessage::new().add_embed(
                     CreateEmbed::new()
@@ -221,7 +225,7 @@ async fn handle_grow_command(
     };
 
     // Generate growth amount (-5 to 10 cm)
-    let growth = rand::thread_rng().gen_range(-5..=10);
+    let growth = rand::rng().random_range(-5..=10);
 
     // Update the database
     match sqlx::query!(
@@ -236,7 +240,7 @@ async fn handle_grow_command(
     {
         Ok(_) => (),
         Err(why) => {
-            println!("Error updating length: {:?}", why);
+            error!("Error updating length: {:?}", why);
             return CreateInteractionResponse::Message(
                 CreateInteractionResponseMessage::new().add_embed(
                     CreateEmbed::new()
@@ -259,7 +263,7 @@ async fn handle_grow_command(
     {
         Ok(record) => record.length,
         Err(why) => {
-            println!("Error fetching length: {:?}", why);
+            error!("Error fetching length: {:?}", why);
             return CreateInteractionResponse::Message(
                 CreateInteractionResponseMessage::new().add_embed(
                     CreateEmbed::new()
@@ -364,7 +368,7 @@ async fn handle_top_command(
     {
         Ok(users) => users,
         Err(why) => {
-            println!("Error fetching top users: {:?}", why);
+            error!("Error fetching top users: {:?}", why);
             return CreateInteractionResponse::Message(
                 CreateInteractionResponseMessage::new().add_embed(
                     CreateEmbed::new()
@@ -503,7 +507,7 @@ async fn handle_global_command(ctx: &Context, _: &CommandInteraction) -> CreateI
     {
         Ok(users) => users,
         Err(why) => {
-            println!("Error fetching global top users: {:?}", why);
+            error!("Error fetching global top users: {:?}", why);
             return CreateInteractionResponse::Message(
                 CreateInteractionResponseMessage::new().add_embed(
                     CreateEmbed::new()
@@ -683,22 +687,13 @@ async fn handle_pvp_command(
             {
                 Ok(_) => 0,
                 Err(why) => {
-                    println!("Error creating user: {:?}", why);
-                    return CreateInteractionResponse::Message(
-                        CreateInteractionResponseMessage::new()
-                            .add_embed(
-                                CreateEmbed::new()
-                                    .title("⚠️ Database Error")
-                                    .description("Failed to create an account for you.")
-                                    .color(0xFF0000),
-                            )
-                            .ephemeral(true),
-                    );
+                    error!("Error creating user: {:?}", why);
+                    0
                 }
             }
         }
         Err(why) => {
-            println!("Database error: {:?}", why);
+            error!("Database error: {:?}", why);
             return CreateInteractionResponse::Message(
                 CreateInteractionResponseMessage::new()
                     .add_embed(
@@ -880,7 +875,7 @@ async fn handle_pvp_accept(
         Ok(Some(record)) => record.length,
         Ok(None) => 0, // Should not happen
         Err(why) => {
-            println!("Database error: {:?}", why);
+            error!("Database error: {:?}", why);
             component
                 .create_response(
                     &ctx.http,
@@ -913,7 +908,7 @@ async fn handle_pvp_accept(
                                 challenger_length, bet
                             ))
                             .color(0xFF0000),
-                    ),
+                    )
             ),
         ).await?;
         pvp_challenges.remove(&challenge_id);
@@ -947,28 +942,13 @@ async fn handle_pvp_accept(
             {
                 Ok(_) => 0,
                 Err(why) => {
-                    println!("Error creating user: {:?}", why);
-                    component
-                        .create_response(
-                            &ctx.http,
-                            CreateInteractionResponse::Message(
-                                CreateInteractionResponseMessage::new()
-                                    .add_embed(
-                                        CreateEmbed::new()
-                                            .title("⚠️ Database Error")
-                                            .description("Failed to create an account for you.")
-                                            .color(0xFF0000),
-                                    )
-                                    .ephemeral(true),
-                            ),
-                        )
-                        .await?;
-                    return Ok(());
+                    error!("Error creating user: {:?}", why);
+                    0
                 }
             }
         }
         Err(why) => {
-            println!("Database error: {:?}", why);
+            error!("Database error: {:?}", why);
             component
                 .create_response(
                     &ctx.http,
@@ -1002,7 +982,6 @@ async fn handle_pvp_accept(
                             ))
                             .color(0xFF0000),
                     )
-                    .ephemeral(true),
             ),
         ).await?;
         return Ok(());
@@ -1023,29 +1002,30 @@ async fn handle_pvp_accept(
     let challenged = component.user.name.clone();
 
     // Roll for both users
-    let challenger_roll = rand::thread_rng().gen_range(1..=100);
-    let challenged_roll = rand::thread_rng().gen_range(1..=100);
+    let challenger_roll = rand::rng().random_range(1..=100);
+    let challenged_roll = rand::rng().random_range(1..=100);
 
-    let (winner_id, loser_id, winner_name, loser_name, winner_roll, loser_roll) = match challenger_roll.cmp(&challenged_roll) {
-        Ordering::Greater => (
-            challenger_id,
-            challenged_id,
-            challenger.clone(),
-            challenged.clone(),
-            challenger_roll,
-            challenged_roll,
-        ),
-        Ordering::Less => (
-            challenged_id,
-            challenger_id,
-            challenged.clone(),
-            challenger.clone(),
-            challenged_roll,
-            challenger_roll,
-        ),
-        Ordering::Equal => {
-            // It's a tie! Let's handle this with a special case
-            component.create_response(
+    let (winner_id, loser_id, winner_name, loser_name, winner_roll, loser_roll) =
+        match challenger_roll.cmp(&challenged_roll) {
+            Ordering::Greater => (
+                challenger_id,
+                challenged_id,
+                challenger.clone(),
+                challenged.clone(),
+                challenger_roll,
+                challenged_roll,
+            ),
+            Ordering::Less => (
+                challenged_id,
+                challenger_id,
+                challenged.clone(),
+                challenger.clone(),
+                challenged_roll,
+                challenger_roll,
+            ),
+            Ordering::Equal => {
+                // It's a tie! Let's handle this with a special case
+                component.create_response(
                 &ctx.http,
                 CreateInteractionResponse::UpdateMessage(
                     CreateInteractionResponseMessage::new()
@@ -1063,10 +1043,10 @@ async fn handle_pvp_accept(
                         .components(vec![]), // Remove the button
                 ),
             ).await?;
-    
-            return Ok(());
-        }
-    };
+
+                return Ok(());
+            }
+        };
 
     // Get previous streak
     let winner_id_str = winner_id.to_string();
@@ -1083,7 +1063,7 @@ async fn handle_pvp_accept(
         Ok(Some(record)) => record.pvp_current_streak,
         Ok(None) => 0,
         Err(why) => {
-            println!("Error getting streak: {:?}", why);
+            error!("Error getting streak: {:?}", why);
             0
         }
     };
@@ -1092,8 +1072,7 @@ async fn handle_pvp_accept(
 
     // Update the database for winner
     match sqlx::query!(
-        "UPDATE dicks SET 
-         length = length + ?, 
+        "UPDATE dicks SET length = length + ?, 
          pvp_wins = pvp_wins + 1,
          pvp_current_streak = ?,
          pvp_max_streak = CASE WHEN ? > pvp_max_streak THEN ? ELSE pvp_max_streak END,
@@ -1111,7 +1090,7 @@ async fn handle_pvp_accept(
     .await
     {
         Ok(_) => (),
-        Err(why) => println!("Error updating winner: {:?}", why),
+        Err(why) => error!("Error updating winner: {:?}", why),
     };
 
     // Update the database for loser
@@ -1131,7 +1110,7 @@ async fn handle_pvp_accept(
     .await
     {
         Ok(_) => (),
-        Err(why) => println!("Error updating loser: {:?}", why),
+        Err(why) => error!("Error updating loser: {:?}", why),
     };
 
     // Get updated lengths
@@ -1263,7 +1242,7 @@ async fn handle_stats_command(
             );
         }
         Err(why) => {
-            println!("Database error: {:?}", why);
+            error!("Database error: {:?}", why);
             return CreateInteractionResponse::Message(
                 CreateInteractionResponseMessage::new()
                     .add_embed(
@@ -1292,7 +1271,7 @@ async fn handle_stats_command(
     {
         Ok(record) => record.rank + 1, // +1 because we're counting users with MORE length
         Err(why) => {
-            println!("Error fetching rank: {:?}", why);
+            error!("Error fetching rank: {:?}", why);
             0
         }
     };
@@ -1431,13 +1410,13 @@ async fn handle_dotd_command(
             .execute(&bot.database)
             .await
             {
-                println!("Error creating guild settings: {:?}", why);
+                error!("Error creating guild settings: {:?}", why);
             }
 
             // No need to return an actual value, we can proceed
         }
         Err(why) => {
-            println!("Database error: {:?}", why);
+            error!("Database error: {:?}", why);
             return CreateInteractionResponse::Message(
                 CreateInteractionResponseMessage::new().add_embed(
                     CreateEmbed::new()
@@ -1460,7 +1439,7 @@ async fn handle_dotd_command(
     {
         Ok(users) => users,
         Err(why) => {
-            println!("Error fetching active users: {:?}", why);
+            error!("Error fetching active users: {:?}", why);
             return CreateInteractionResponse::Message(
                 CreateInteractionResponseMessage::new()
                     .add_embed(
@@ -1486,11 +1465,11 @@ async fn handle_dotd_command(
     }
 
     // Select a random winner
-    let winner_idx = rand::thread_rng().gen_range(0..active_users.len());
+    let winner_idx = rand::rng().random_range(0..active_users.len());
     let winner = &active_users[winner_idx];
 
     // Award bonus (5-10 cm - more than the automated nightly event)
-    let bonus = rand::thread_rng().gen_range(5..=10);
+    let bonus = rand::rng().random_range(5..=10);
 
     // Update DB
     match sqlx::query!(
@@ -1505,7 +1484,7 @@ async fn handle_dotd_command(
     {
         Ok(_) => (),
         Err(why) => {
-            println!("Error updating winner: {:?}", why);
+            error!("Error updating winner: {:?}", why);
             return CreateInteractionResponse::Message(
                 CreateInteractionResponseMessage::new().add_embed(
                     CreateEmbed::new()
@@ -1527,7 +1506,9 @@ async fn handle_dotd_command(
     .await
     {
         Ok(_) => (),
-        Err(why) => println!("Error updating guild settings: {:?}", why),
+        Err(why) => {
+            error!("Error updating guild settings: {:?}", why);
+        }
     };
 
     // Get winner info
@@ -1537,7 +1518,7 @@ async fn handle_dotd_command(
     {
         Ok(user) => user,
         Err(why) => {
-            println!("Error fetching user: {:?}", why);
+            error!("Error fetching user: {:?}", why);
             return CreateInteractionResponse::Message(
                 CreateInteractionResponseMessage::new().add_embed(
                     CreateEmbed::new()
@@ -1580,6 +1561,27 @@ async fn handle_dotd_command(
 
 #[tokio::main]
 async fn main() {
+    // Initialize logger
+    let colors_line = ColoredLevelConfig::new()
+        .error(Color::Red)
+        .warn(Color::Yellow)
+        .info(Color::Green)
+        .debug(Color::BrightCyan)
+        .trace(Color::BrightBlack);
+
+    fern::Dispatch::new()
+        .format(move |out, message, record| {
+            out.finish(format_args!(
+                "{}[{}] {}",
+                colors_line.color(record.level()),
+                record.target(),
+                message
+            ))
+        })
+        .chain(std::io::stdout())
+        .apply()
+        .unwrap();
+
     // Load environment variables
     dotenv::dotenv().ok();
     let token = env::var("DISCORD_TOKEN").expect("Expected a discord token in the environment");
@@ -1610,7 +1612,7 @@ async fn main() {
     .execute(&database)
     .await
     {
-        Ok(_) => println!("Created dicks table"),
+        Ok(_) => info!("Created dicks table"),
         Err(e) => panic!("Error creating dicks table: {}", e),
     };
 
@@ -1624,7 +1626,7 @@ async fn main() {
     .execute(&database)
     .await
     {
-        Ok(_) => println!("Created guild_settings table"),
+        Ok(_) => info!("Created guild_settings table"),
         Err(e) => panic!("Error creating guild_settings table: {}", e),
     };
 
@@ -1649,6 +1651,6 @@ async fn main() {
 
     // Start the bot
     if let Err(why) = client.start().await {
-        println!("An error occurred while running the client: {:?}", why);
+        error!("An error occurred while running the client: {:?}", why);
     }
 }
