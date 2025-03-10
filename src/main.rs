@@ -1,6 +1,6 @@
 use chrono::{Duration, NaiveDateTime, Utc};
 use fern::colors::{Color, ColoredLevelConfig};
-use log::{error, info};
+use log::{error, info, LevelFilter};
 use rand::Rng;
 use serenity::all::{
     ButtonStyle, CommandInteraction, CreateActionRow, CreateButton, CreateCommand, CreateEmbed,
@@ -1569,18 +1569,21 @@ async fn main() {
         .debug(Color::BrightCyan)
         .trace(Color::BrightBlack);
 
-    fern::Dispatch::new()
+        fern::Dispatch::new()
         .format(move |out, message, record| {
             out.finish(format_args!(
-                "{}[{}] {}",
+                "[{} {} {}] {}",
+                chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
                 colors_line.color(record.level()),
                 record.target(),
                 message
             ))
         })
+        .level(LevelFilter::Warn)
+        .level_for(env!("CARGO_PKG_NAME"), LevelFilter::Debug)
         .chain(std::io::stdout())
         .apply()
-        .unwrap();
+        .expect("Failed to initialize logger");
 
     // Load environment variables
     dotenv::dotenv().ok();
