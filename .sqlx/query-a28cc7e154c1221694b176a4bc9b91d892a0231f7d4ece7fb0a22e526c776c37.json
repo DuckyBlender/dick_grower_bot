@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE dicks SET length = length + ?, last_grow = datetime('now')\n         WHERE user_id = ? AND guild_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "a28cc7e154c1221694b176a4bc9b91d892a0231f7d4ece7fb0a22e526c776c37"
+}

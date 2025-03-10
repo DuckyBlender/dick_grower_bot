@@ -1,5 +1,4 @@
 /target
 .env
 *.sqlite*
-.sqlx
 *.db*

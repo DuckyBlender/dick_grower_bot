@@ -1,0 +1,68 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT length, dick_of_day_count, last_grow, \n                pvp_wins, pvp_losses, pvp_max_streak, pvp_current_streak,\n                cm_won, cm_lost\n         FROM dicks \n         WHERE user_id = ? AND guild_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "length",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "dick_of_day_count",
+        "ordinal": 1,
+        "type_info": "Integer"
+      },
+      {
+        "name": "last_grow",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "pvp_wins",
+        "ordinal": 3,
+        "type_info": "Integer"
+      },
+      {
+        "name": "pvp_losses",
+        "ordinal": 4,
+        "type_info": "Integer"
+      },
+      {
+        "name": "pvp_max_streak",
+        "ordinal": 5,
+        "type_info": "Integer"
+      },
+      {
+        "name": "pvp_current_streak",
+        "ordinal": 6,
+        "type_info": "Integer"
+      },
+      {
+        "name": "cm_won",
+        "ordinal": 7,
+        "type_info": "Integer"
+      },
+      {
+        "name": "cm_lost",
+        "ordinal": 8,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "a205cf9ea311968776cc1348cdae01939ce9000c6ebd6a7f2c499a59900866ba"
+}

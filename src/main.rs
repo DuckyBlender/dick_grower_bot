@@ -44,50 +44,62 @@ impl EventHandler for Handler {
         match interaction {
             Interaction::Command(command) => {
                 // Log command invocation
-                info!(
-                    "Command invoked: /{} by user_id:{} ({}), guild_id:{:?}",
-                    command.data.name, command.user.id, command.user.name, command.guild_id
-                );
-
+                
                 if command.guild_id.is_none() {
                     // Return message notifying that the bot is only available in guilds
+                    info!(
+                        "Command invoked in DM: /{} by {} (ID: {})",
+                        command.data.name,
+                        command.user.name,
+                        command.user.id
+                    );
+                    // Respond with an ephemeral message
                     if let Err(why) = command.create_response(&ctx.http,
                         CreateInteractionResponse::Message(
                             CreateInteractionResponseMessage::new()
-                                .add_embed(
-                                    CreateEmbed::new()
-                                        .title("⚠️ Server Only Bot")
-                                        .description("This bot can only be used in a server, not in direct messages.")
-                                        .color(0xFF5733)
-                                        .footer(CreateEmbedFooter::new(
-                                            "Please use this bot in a server where it is invited and begin your cucumber journey!",
-                                        ))
-                                )
-                                .ephemeral(true)
+                            .add_embed(
+                                CreateEmbed::new()
+                                .title("⚠️ Server Only Bot")
+                                .description("This bot can only be used in a server, not in direct messages.")
+                                .color(0xFF5733)
+                                .footer(CreateEmbedFooter::new(
+                                    "Please use this bot in a server where it is invited and begin your cucumber journey!",
+                                ))
+                            )
+                            .ephemeral(true)
                         )
                     ).await {
                         error!("Cannot respond to slash command for guild check: {}", why);
                     }
-                } else {
-                    // Check if interaction is in a guild
-                    let content = match command.data.name.as_str() {
-                        "grow" => handle_grow_command(&ctx, &command).await,
-                        "top" => handle_top_command(&ctx, &command).await,
-                        "global" => handle_global_command(&ctx, &command).await,
-                        "pvp" => handle_pvp_command(&ctx, &command).await,
-                        "stats" => handle_stats_command(&ctx, &command).await,
-                        "dickoftheday" => handle_dotd_command(&ctx, &command).await,
-                        "help" => handle_help_command(&ctx, &command).await,
-                        _ => CreateInteractionResponse::Message(
-                            CreateInteractionResponseMessage::new()
-                                .content("Not implemented")
-                                .ephemeral(true),
-                        ),
-                    };
+                    return;
+                }
 
-                    if let Err(why) = command.create_response(&ctx.http, content).await {
-                        error!("Cannot respond to slash command: {}", why);
-                    }
+                info!(
+                    "Command invoked: /{} by {} (ID: {}) in guild {}",
+                    command.data.name,
+                    command.user.name,
+                    command.user.id,
+                    command.guild_id.unwrap_or_default()
+                );
+
+                // Check if interaction is in a guild
+                let content = match command.data.name.as_str() {
+                    "grow" => handle_grow_command(&ctx, &command).await,
+                    "top" => handle_top_command(&ctx, &command).await,
+                    "global" => handle_global_command(&ctx, &command).await,
+                    "pvp" => handle_pvp_command(&ctx, &command).await,
+                    "stats" => handle_stats_command(&ctx, &command).await,
+                    "dickoftheday" => handle_dotd_command(&ctx, &command).await,
+                    "help" => handle_help_command(&ctx, &command).await,
+                    _ => CreateInteractionResponse::Message(
+                        CreateInteractionResponseMessage::new()
+                            .content("Not implemented")
+                            .ephemeral(true),
+                    ),
+                };
+
+                if let Err(why) = command.create_response(&ctx.http, content).await {
+                    error!("Cannot respond to slash command: {}", why);
                 }
             }
             Interaction::Component(component) => {
@@ -214,7 +226,7 @@ async fn handle_grow_command(
                                 ))
                                 .color(0xFF5733)
                                 .footer(CreateEmbedFooter::new(
-                                    "Patience is a virtue... especially for your little buddy.",
+                                    "Patience is key... especially for your little buddy.",
                                 ))
                         )
                 );
@@ -589,7 +601,14 @@ async fn handle_global_command(ctx: &Context, _: &CommandInteraction) -> CreateI
 
         let guild_name = match user.guild_id.parse::<u64>() {
             Ok(id) => match ctx.http.get_guild(id.into()).await {
-                Ok(guild) => guild.name,
+                Ok(guild) => {
+                    // Only show guild name if it's a community server (public)
+                    if guild.features.contains(&"COMMUNITY".to_string()) {
+                        guild.name
+                    } else {
+                        "Private Server".to_string()
+                    }
+                }
                 Err(_) => "Unknown Server".to_string(),
             },
             Err(_) => "Unknown Server".to_string(),

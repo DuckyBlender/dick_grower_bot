@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE dicks SET \n         length = length - ?,\n         pvp_losses = pvp_losses + 1,\n         pvp_current_streak = 0,\n         cm_lost = cm_lost + ?\n         WHERE user_id = ? AND guild_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "f5309d7c3caf3fdce56f39129e4263cb11e84395357230a2cda088599c471459"
+}
