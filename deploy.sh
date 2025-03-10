@@ -1,0 +1,1 @@
+docker run --name dick-grower-bot -v dick_data:/app/data dick-bot
