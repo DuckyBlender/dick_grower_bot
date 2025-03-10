@@ -606,12 +606,12 @@ async fn handle_global_command(ctx: &Context, _: &CommandInteraction) -> CreateI
                     if guild.features.contains(&"COMMUNITY".to_string()) {
                         guild.name
                     } else {
-                        "Private Server".to_string()
+                        "private server".to_string()
                     }
                 }
-                Err(_) => "Unknown Server".to_string(),
+                Err(_) => "unknown server".to_string(),
             },
-            Err(_) => "Unknown Server".to_string(),
+            Err(_) => "unknown server".to_string(),
         };
 
         let emoji = if i == 0 {
