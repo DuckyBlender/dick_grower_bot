@@ -1,8 +1,8 @@
-use chrono::{Duration, Local, NaiveDateTime, Utc};
+use chrono::{Duration, NaiveDateTime, Utc};
 use rand::Rng;
 use serenity::all::{
     ButtonStyle, CommandInteraction, CreateActionRow, CreateButton, CreateCommand, CreateEmbed,
-    CreateEmbedFooter, CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage,
+    CreateEmbedFooter, CreateInteractionResponse, CreateInteractionResponseMessage,
 };
 use serenity::async_trait;
 use serenity::builder::CreateCommandOption;
@@ -18,7 +18,6 @@ use std::env;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::RwLock;
-use tokio::time::sleep;
 
 struct Handler;
 
@@ -42,6 +41,27 @@ impl EventHandler for Handler {
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
         match interaction {
             Interaction::Command(command) => {
+                if command.guild_id.is_none() {
+                    // Return message notifying that the bot is only available in guilds
+                    if let Err(why) = command.create_response(&ctx.http, 
+                        CreateInteractionResponse::Message(
+                            CreateInteractionResponseMessage::new()
+                                .add_embed(
+                                    CreateEmbed::new()
+                                        .title("⚠️ Server Only Bot")
+                                        .description("This bot can only be used in a server, not in direct messages.")
+                                        .color(0xFF5733)
+                                        .footer(CreateEmbedFooter::new(
+                                            "Please use this bot in a server where it is invited and begin your cucumber journey!",
+                                        ))
+                                )
+                                .ephemeral(true)
+                        )
+                    ).await {
+                        println!("Cannot respond to slash command for guild check: {why}");
+                    }
+                }
+                // Check if interaction is in a guild
                 let content = match command.data.name.as_str() {
                     "grow" => handle_grow_command(&ctx, &command).await,
                     "top" => handle_top_command(&ctx, &command).await,
@@ -113,150 +133,6 @@ impl EventHandler for Handler {
 
         if let Err(why) = ctx.http.create_global_commands(&commands).await {
             println!("Error creating global commands: {why}");
-        }
-
-        // Start daily dick of the day automatic selection
-        tokio::spawn(daily_dick_of_the_day(ctx.clone()));
-    }
-}
-
-async fn daily_dick_of_the_day(ctx: Context) {
-    let data = ctx.data.read().await;
-    let bot = data.get::<Bot>().unwrap();
-
-    loop {
-        // Schedule for midnight
-        let now = Local::now();
-        let next_midnight = (now + Duration::days(1))
-            .date_naive()
-            .and_hms_opt(0, 0, 0)
-            .unwrap();
-        let duration_until_midnight = next_midnight
-            .signed_duration_since(now.naive_local())
-            .to_std()
-            .unwrap();
-
-        sleep(duration_until_midnight).await;
-
-        // Get all guilds
-        let guilds = match ctx.http.get_guilds(None, None).await {
-            Ok(guilds) => guilds,
-            Err(why) => {
-                println!("Error getting guilds: {:?}", why);
-                continue;
-            }
-        };
-
-        for guild in guilds {
-            // Get active users in the guild
-            let guild_id_str = guild.id.to_string();
-            let active_users = match sqlx::query!(
-                "SELECT user_id, length FROM dicks
-                 WHERE guild_id = ?
-                 AND last_grow > datetime('now', '-7 days')",
-                guild_id_str
-            )
-            .fetch_all(&bot.database)
-            .await
-            {
-                Ok(users) => users,
-                Err(why) => {
-                    println!("Error fetching active users: {:?}", why);
-                    continue;
-                }
-            };
-
-            if active_users.is_empty() {
-                continue;
-            }
-
-            // Select a random winner
-            let winner_idx = rand::thread_rng().gen_range(0..active_users.len());
-            let winner = &active_users[winner_idx];
-
-            // Award bonus (3-7 cm)
-            let bonus = rand::thread_rng().gen_range(3..=7);
-
-            // Update DB
-            let guild_id_str = guild.id.to_string();
-            match sqlx::query!(
-                "UPDATE dicks SET length = length + ?, dick_of_day_count = dick_of_day_count + 1
-                 WHERE user_id = ? AND guild_id = ?",
-                bonus,
-                winner.user_id,
-                guild_id_str
-            )
-            .execute(&bot.database)
-            .await
-            {
-                Ok(_) => (),
-                Err(why) => {
-                    println!("Error updating winner: {:?}", why);
-                    continue;
-                }
-            };
-
-            // Announce the winner
-            let winner_user = match UserId::new(winner.user_id.parse::<u64>().unwrap_or_default())
-                .to_user(&ctx)
-                .await
-            {
-                Ok(user) => user,
-                Err(why) => {
-                    println!("Error fetching user: {:?}", why);
-                    continue;
-                }
-            };
-
-            let guild_data = match ctx.http.get_guild(guild.id).await {
-                Ok(g) => g,
-                Err(why) => {
-                    println!("Error fetching guild: {:?}", why);
-                    continue;
-                }
-            };
-
-            let default_channel = match guild_data.system_channel_id {
-                Some(channel) => channel,
-                None => {
-                    // If no system channel, try to find any text channel
-                    let channels = match ctx.http.get_channels(guild.id).await {
-                        Ok(channels) => channels,
-                        Err(why) => {
-                            println!("Error getting channels: {:?}", why);
-                            continue;
-                        }
-                    };
-
-                    let text_channel = channels
-                        .iter()
-                        .find(|c| c.kind == serenity::model::channel::ChannelType::Text);
-                    if let Some(channel) = text_channel {
-                        channel.id
-                    } else {
-                        continue;
-                    }
-                }
-            };
-
-            let embed = CreateEmbed::new()
-                .title("🏆 Automatic Dick of the Day! 🏆")
-                .color(0xFFD700) // Gold
-                .description(format!(
-                    "Congratulations to **{}**! Their magnificent member has been crowned Dick of the Day!\n\n",
-                    winner_user.name
-                ))
-                .field("Bonus Growth", format!("+{} cm", bonus), true)
-                .field("New Total", format!("{} cm", winner.length + bonus), true)
-                .thumbnail(winner_user.face())
-                .footer(CreateEmbedFooter::new("May your schlong be long and strong!"));
-
-            if let Err(why) = default_channel
-                .send_message(&ctx.http, CreateMessage::new().add_embed(embed))
-                .await
-            {
-                println!("Error sending Dick of the Day announcement: {:?}", why);
-            }
         }
     }
 }
@@ -889,7 +765,7 @@ async fn handle_pvp_command(
                 CreateEmbed::new()
                     .title("🥊 Dick Measuring Contest Challenge!")
                     .description(format!(
-                        "**{}** has started a dick measuring contest!\n\nBet amount: **{} cm**\n\nAnyone can accept this challenge by clicking the button below (except the challenger).\n\nThe challenge will expire in 1 hour.",
+                        "**{}** has started a dick measuring contest!\n\nBet amount: **{} cm**\n\nAnyone can accept this challenge by clicking the button below",
                         challenger, bet
                     ))
                     .color(0x3498DB) // Blue
