@@ -3,8 +3,8 @@ use fern::colors::{Color, ColoredLevelConfig};
 use log::{LevelFilter, error, info};
 use rand::Rng;
 use serenity::all::{
-    ButtonStyle, CommandInteraction, CreateActionRow, CreateButton, CreateCommand, CreateEmbed,
-    CreateEmbedFooter, CreateInteractionResponse, CreateInteractionResponseMessage,
+    ActivityData, ButtonStyle, CommandInteraction, CreateActionRow, CreateButton, CreateCommand,
+    CreateEmbed, CreateEmbedFooter, CreateInteractionResponse, CreateInteractionResponseMessage,
 };
 use serenity::async_trait;
 use serenity::builder::CreateCommandOption;
@@ -18,8 +18,9 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::env;
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration as StdDuration, SystemTime, UNIX_EPOCH};
 use tokio::sync::RwLock;
+use tokio::time;
 
 struct Handler;
 
@@ -44,14 +45,12 @@ impl EventHandler for Handler {
         match interaction {
             Interaction::Command(command) => {
                 // Log command invocation
-                
+
                 if command.guild_id.is_none() {
                     // Return message notifying that the bot is only available in guilds
                     info!(
                         "Command invoked in DM: /{} by {} (ID: {})",
-                        command.data.name,
-                        command.user.name,
-                        command.user.id
+                        command.data.name, command.user.name, command.user.id
                     );
                     // Respond with an ephemeral message
                     if let Err(why) = command.create_response(&ctx.http,
@@ -131,6 +130,20 @@ impl EventHandler for Handler {
     async fn ready(&self, ctx: Context, ready: Ready) {
         info!("{} is connected!", ready.user.name);
 
+        // Start a task to periodically update the presence
+        let ctx_clone = ctx.clone();
+        tokio::spawn(async move {
+            let mut interval = time::interval(StdDuration::from_secs(300)); // Update every 5 minutes
+
+            loop {
+                // Update presence
+                update_presence(&ctx_clone).await;
+
+                // Wait for the next interval
+                interval.tick().await;
+            }
+        });
+
         // Register commands globally
         let commands = vec![
             CreateCommand::new("grow")
@@ -161,6 +174,32 @@ impl EventHandler for Handler {
             error!("Error creating global commands: {}", why);
         }
     }
+}
+
+// Update presence based on current stats
+async fn update_presence(ctx: &Context) {
+    let data = ctx.data.read().await;
+    let bot = data.get::<Bot>().unwrap();
+
+    // Get current guild count from context cache
+    let guild_count = ctx.cache.guilds().len();
+
+    // Count unique users from database
+    let user_count = match sqlx::query!("SELECT COUNT(DISTINCT user_id) as count FROM dicks")
+        .fetch_one(&bot.database)
+        .await
+    {
+        Ok(result) => result.count as usize,
+        Err(e) => {
+            error!("Error counting users: {:?}", e);
+            return;
+        }
+    };
+
+    let desc = format!("{} servers & {} dicks", guild_count, user_count);
+    info!("Updating presence to: {}", desc);
+
+    ctx.set_activity(Some(ActivityData::watching(desc)));
 }
 
 // Function to check if today is a new UTC day compared to the given date
@@ -1697,45 +1736,6 @@ async fn main() {
     let database = SqlitePool::connect(&env::var("DATABASE_URL").unwrap())
         .await
         .expect("Coudn't connect to the sqlite database");
-
-    // Run migrations
-    match sqlx::query(
-        "CREATE TABLE IF NOT EXISTS dicks (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id TEXT NOT NULL,
-            guild_id TEXT NOT NULL,
-            length INTEGER NOT NULL DEFAULT 0,
-            last_grow TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            dick_of_day_count INTEGER NOT NULL DEFAULT 0,
-            pvp_wins INTEGER NOT NULL DEFAULT 0,
-            pvp_losses INTEGER NOT NULL DEFAULT 0,
-            pvp_max_streak INTEGER NOT NULL DEFAULT 0,
-            pvp_current_streak INTEGER NOT NULL DEFAULT 0,
-            cm_won INTEGER NOT NULL DEFAULT 0,
-            cm_lost INTEGER NOT NULL DEFAULT 0,
-            UNIQUE(user_id, guild_id)
-        )",
-    )
-    .execute(&database)
-    .await
-    {
-        Ok(_) => info!("Created dicks table"),
-        Err(e) => panic!("Error creating dicks table: {}", e),
-    };
-
-    match sqlx::query(
-        "CREATE TABLE IF NOT EXISTS guild_settings (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            guild_id TEXT NOT NULL UNIQUE,
-            last_dotd TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-        )",
-    )
-    .execute(&database)
-    .await
-    {
-        Ok(_) => info!("Created guild_settings table"),
-        Err(e) => panic!("Error creating guild_settings table: {}", e),
-    };
 
     // Initialize the bot
     let intents =
