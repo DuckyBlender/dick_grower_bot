@@ -46,7 +46,7 @@ COPY --from=builder /app/target/release/dick_grower_bot /app/dick_grower_bot
 # Copy .env file
 COPY .env /app/.env
 # Copy the database
-COPY --from=builder /app/data /app/data
+COPY --from=builder /app/data/database.sqlite /app/data/database.sqlite
 # Copy the .sqlx directory containing the SQLx offline cache
 COPY --from=builder /app/.sqlx /app/.sqlx
 
