@@ -18,11 +18,11 @@ COPY . .
 RUN mkdir -p /app/data
 
 # Create database and run migrations
-RUN sqlx db create --database-url=sqlite:/app/data/dick_growth.db && \
-    sqlx migrate run --database-url=sqlite:/app/data/dick_growth.db
+RUN sqlx db create --database-url=sqlite:/app/data/database.sqlite && \
+    sqlx migrate run --database-url=sqlite:/app/data/database.sqlite
 
 # Prepare SQLx offline cache
-RUN cargo sqlx prepare --database-url sqlite:/app/data/dick_growth.db
+RUN cargo sqlx prepare --database-url sqlite:/app/data/database.sqlite
 
 # Verify that the .sqlx directory exists
 RUN ls -la /app/.sqlx
@@ -54,7 +54,7 @@ COPY --from=builder /app/.sqlx /app/.sqlx
 VOLUME /app/data
 
 # Set environment variable
-ENV DATABASE_URL=sqlite:/app/data/dick_growth.db
+ENV DATABASE_URL=sqlite:/app/data/database.sqlite
 
 # Run the application
 CMD ["/app/dick_grower_bot"]

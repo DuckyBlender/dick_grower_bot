@@ -20,7 +20,7 @@ use std::env;
 use std::sync::Arc;
 use std::time::{Duration as StdDuration, SystemTime, UNIX_EPOCH};
 use tokio::sync::RwLock;
-use tokio::time;
+use tokio::time::{self, Instant};
 
 struct Handler;
 
@@ -82,6 +82,7 @@ impl EventHandler for Handler {
                 );
 
                 // Check if interaction is in a guild
+                let now = Instant::now();
                 let content = match command.data.name.as_str() {
                     "grow" => handle_grow_command(&ctx, &command).await,
                     "top" => handle_top_command(&ctx, &command).await,
@@ -100,6 +101,12 @@ impl EventHandler for Handler {
                 if let Err(why) = command.create_response(&ctx.http, content).await {
                     error!("Cannot respond to slash command: {}", why);
                 }
+                let elapsed = now.elapsed();
+                info!(
+                    "Command /{} executed in {} ms",
+                    command.data.name,
+                    elapsed.as_millis()
+                );
             }
             Interaction::Component(component) => {
                 // Handle button interactions
@@ -138,7 +145,7 @@ impl EventHandler for Handler {
             loop {
                 // Wait for the next interval
                 interval.tick().await;
-                
+
                 // Update presence
                 update_presence(&ctx_clone).await;
             }
@@ -146,8 +153,7 @@ impl EventHandler for Handler {
 
         // Register commands globally
         let commands = vec![
-            CreateCommand::new("grow")
-                .description("Grow your cucumber daily (resets at 00:00 UTC)"),
+            CreateCommand::new("grow").description("Grow your cucumber daily"),
             CreateCommand::new("top")
                 .description("Show the top players with the biggest weapons in this server"),
             CreateCommand::new("global")
@@ -164,9 +170,7 @@ impl EventHandler for Handler {
                     .min_int_value(1),
                 ),
             CreateCommand::new("stats").description("View your dick stats"),
-            CreateCommand::new("dickoftheday").description(
-                "Randomly select a Dick of the Day (once per day per server, resets at 00:00 UTC)",
-            ),
+            CreateCommand::new("dickoftheday").description("Randomly select a Dick of the Day"),
             CreateCommand::new("help").description("Show help information about the bot commands"),
         ];
 
@@ -236,9 +240,9 @@ async fn handle_grow_command(
     let user_id = command.user.id.to_string();
     let guild_id = command.guild_id.unwrap().to_string();
 
-    // Check if the user has grown today
-    let _last_grow = match sqlx::query!(
-        "SELECT last_grow FROM dicks WHERE user_id = ? AND guild_id = ?",
+    // Check if the user has grown today and get their stats
+    let user_stats = match sqlx::query!(
+        "SELECT last_grow, length, growth_count FROM dicks WHERE user_id = ? AND guild_id = ?",
         user_id,
         guild_id
     )
@@ -259,7 +263,7 @@ async fn handle_grow_command(
                             CreateEmbed::new()
                                 .title("🕒 Hold up, speedy!")
                                 .description(format!(
-                                    "You've already grown your dick today! Try again tomorrow at 00:00 UTC.\n\n**Time until reset: {}h {}m**\n\nExcessive stimulation might cause injuries, you know?",
+                                    "You've already grown your dick today! Try again tomorrow.\n\n**Time until reset: {}h {}m**\n\nExcessive stimulation might cause injuries, you know?",
                                     time_left.num_hours(),
                                     time_left.num_minutes() % 60
                                 ))
@@ -271,15 +275,16 @@ async fn handle_grow_command(
                 );
             }
 
-            last_grow
+            // Return user stats
+            (record.growth_count, record.length)
         }
         Ok(None) => {
             // New user, create a record
             match sqlx::query!(
-                "INSERT INTO dicks (user_id, guild_id, length, last_grow, dick_of_day_count, 
+                "INSERT INTO dicks (user_id, guild_id, length, last_grow, growth_count, dick_of_day_count, 
                                    pvp_wins, pvp_losses, pvp_max_streak, pvp_current_streak,
                                    cm_won, cm_lost)
-                 VALUES (?, ?, 0, datetime('now'), 0, 0, 0, 0, 0, 0, 0)",
+                 VALUES (?, ?, 0, datetime('now'), 0, 0, 0, 0, 0, 0, 0, 0)",
                 user_id,
                 guild_id
             )
@@ -292,7 +297,8 @@ async fn handle_grow_command(
                 }
             };
 
-            Utc::now().naive_utc()
+            // New user with 0 growth count
+            (0, 0)
         }
         Err(why) => {
             error!("Database error: {:?}", why);
@@ -309,12 +315,36 @@ async fn handle_grow_command(
         }
     };
 
-    // Generate growth amount (-5 to 10 cm)
-    let growth = rand::rng().random_range(-5..=10);
+    // Check if user is in grace period (first 7 growths)
+    let is_grace_period = user_stats.0 < 7;
 
-    // Update the database
+    // Generate growth amount based on whether user is in grace period
+    let growth = if is_grace_period {
+        // During grace period: 1 to 10 cm (only positive)
+        info!(
+            "User {} is in grace period (growth #{}), generating positive growth only",
+            user_id,
+            user_stats.0 + 1
+        );
+        rand::rng().random_range(1..=10)
+    } else {
+        // After grace period: -5 to 10 cm with more positive chance
+        let sign_ratio: f32 = 0.80; // 80% chance of positive growth
+        let sign_ratio_percent = (sign_ratio * 100.0).round() as u32;
+
+        // Generate a random value
+        let is_positive = rand::rng().random_ratio(sign_ratio_percent, 100);
+
+        if is_positive {
+            rand::rng().random_range(1..=10) // Positive growth
+        } else {
+            rand::rng().random_range(-5..=-1) // Negative growth (never 0)
+        }
+    };
+
+    // Update the database - increment growth count too
     match sqlx::query!(
-        "UPDATE dicks SET length = length + ?, last_grow = datetime('now')
+        "UPDATE dicks SET length = length + ?, last_grow = datetime('now'), growth_count = growth_count + 1
          WHERE user_id = ? AND guild_id = ?",
         growth,
         user_id,
@@ -390,15 +420,6 @@ async fn handle_grow_command(
             ),
             0x66FF66, // Light green
         )
-    } else if growth == 0 {
-        (
-            "😐 No Change",
-            format!(
-                "Your dick didn't grow at all today.\nYour length: **{} cm**\n\nMaybe try some positive affirmations?",
-                new_length
-            ),
-            0xFFFF33, // Yellow
-        )
     } else if growth >= -3 {
         (
             "📉 Minor Shrinkage",
@@ -408,6 +429,7 @@ async fn handle_grow_command(
             ),
             0xFF9933, // Orange
         )
+        // impossible to get 0 growth
     } else {
         (
             "💀 CATASTROPHIC SHRINKAGE!",
@@ -845,7 +867,7 @@ async fn handle_pvp_command(
         .emoji('🔥');
 
     let components = vec![CreateActionRow::Buttons(vec![accept_button])];
-    
+
     // Create bet description based on size
     let bet_description = if bet >= 50 {
         "**HOLY MOLY!** This is a high-stakes dick measuring contest!"
@@ -1131,13 +1153,16 @@ async fn handle_pvp_accept(
             Ordering::Equal => {
                 // It's a tie! Handle this special case
                 let tie_comment = if bet >= 30 {
-                    format!("A {} cm bet and it ends in a tie?! The dick gods must be laughing!", bet)
+                    format!(
+                        "A {} cm bet and it ends in a tie?! The dick gods must be laughing!",
+                        bet
+                    )
                 } else if bet >= 15 {
                     "Insanity! Neither dick emerged victorious today!".to_string()
                 } else {
                     "What are the odds?! Both measuring exactly the same!".to_string()
                 };
-                
+
                 component.create_response(
                     &ctx.http,
                     CreateInteractionResponse::UpdateMessage(
@@ -1256,58 +1281,67 @@ async fn handle_pvp_accept(
     let taunt = if winner_roll - loser_roll > 50 {
         if bet >= 30 {
             format!(
-                "It wasn't even close! {}'s dick absolutely DEMOLISHED {}'s in a historic beatdown! Those {} centimeters will be remembered for generations!",
+                "💀 It wasn't even close! {}'s dick absolutely DEMOLISHED {}'s in a historic beatdown! Those {} centimeters will be remembered for generations! 📜",
                 winner_name, loser_name, bet
             )
         } else {
             format!(
-                "It wasn't even close! {}'s dick destroyed {}'s in an absolute massacre!",
+                "💀 It wasn't even close! {}'s dick destroyed {}'s in an absolute massacre! ⚰️",
                 winner_name, loser_name
             )
         }
     } else if winner_roll - loser_roll > 20 {
         if bet >= 20 {
             format!(
-                "{}'s dick clearly outclassed {}'s in this epic showdown! That's {} cm of pride changing hands!",
+                "🏆 {}'s dick clearly outclassed {}'s in this epic showdown! That's {} cm of pride changing hands!",
                 winner_name, loser_name, bet
             )
         } else {
             format!(
-                "{}'s dick clearly outclassed {}'s in this epic showdown!",
+                "🏆 {}'s dick clearly outclassed {}'s in this epic showdown!",
                 winner_name, loser_name
             )
         }
     } else if winner_roll - loser_roll > 5 {
         if bet >= 15 {
             format!(
-                "A close match, but {}'s dick had just enough extra length to claim victory and snatch those {} valuable centimeters!",
+                "🥇 A close match, but {}'s dick had just enough extra length to claim victory and snatch those {} valuable centimeters!",
                 winner_name, bet
             )
         } else {
             format!(
-                "A close match, but {}'s dick had just enough extra length to claim victory!",
+                "🥇 A close match, but {}'s dick had just enough extra length to claim victory!",
                 winner_name
             )
         }
     } else if bet >= 25 {
         format!(
-            "WHAT A NAIL-BITER! {}'s dick barely edged out {}'s by a hair's width! Those {} centimeters were almost too close to call!",
+            "😱 WHAT A NAIL-BITER! {}'s dick barely edged out {}'s by a hair's width! Those {} centimeters were almost too close to call!",
             winner_name, loser_name, bet
         )
     } else {
         format!(
-            "That was incredibly close! {}'s dick barely edged out {}'s by a hair's width!",
+            "😮 That was incredibly close! {}'s dick barely edged out {}'s by a hair's width!",
             winner_name, loser_name
         )
     };
 
     // Add a comment on the size of the bet
     let bet_comment = if bet >= 50 {
-        format!("\n\n💰 **MASSIVE BET!** {} cm is roughly a week's worth of growth! Talk about high stakes!", bet)
+        format!(
+            "\n\n💰 **MASSIVE BET!** {} cm is roughly a week's worth of growth! Talk about high stakes!",
+            bet
+        )
     } else if bet >= 30 {
-        format!("\n\n💰 A **huge {} cm bet**! That's several days of growth on the line!", bet)
+        format!(
+            "\n\n💰 A **huge {} cm bet**! That's several days of growth on the line!",
+            bet
+        )
     } else if bet >= 15 {
-        format!("\n\n💰 A solid **{} cm bet** - more than a day's worth of growth!", bet)
+        format!(
+            "\n\n💰 A solid **{} cm bet** - more than a day's worth of growth!",
+            bet
+        )
     } else if bet >= 10 {
         "\n\n💰 A respectable wager, putting a full day's growth at stake!".to_string()
     } else {
@@ -1317,12 +1351,12 @@ async fn handle_pvp_accept(
     // Streak comment
     let streak_comment = if new_winner_streak >= 5 {
         format!(
-            "\n\n🔥 **{}** is on a **{}-win streak**! Absolutely dominating!",
+            "\n\n🔥 **{}** is on a **{}-win streak**! Absolutely dominating! 👑",
             winner_name, new_winner_streak
         )
     } else if new_winner_streak >= 3 {
         format!(
-            "\n\n🔥 **{}** is on a **{}-win streak**!",
+            "\n\n🔥 **{}** is on a **{}-win streak**! 📈",
             winner_name, new_winner_streak
         )
     } else {
@@ -1441,7 +1475,7 @@ async fn handle_stats_command(
     } else {
         let time_left = time_until_next_utc_reset();
         format!(
-            "⏰ Next growth at 00:00 UTC (in: {}h {}m)",
+            "⏰ Next growth in: **{}**h **{}**m)",
             time_left.num_hours(),
             time_left.num_minutes() % 60
         )
@@ -1540,7 +1574,7 @@ async fn handle_dotd_command(
                             CreateEmbed::new()
                                 .title("⏰ Dick of the Day Already Awarded!")
                                 .description(format!(
-                                    "This server has already crowned a Dick of the Day today!\n\nNext Dick of the Day at 00:00 UTC (in: **{}h {}m**)",
+                                    "This server has already crowned a Dick of the Day today!\n\nNext Dick of the Day in: **{}h {}m**",
                                     time_left.num_hours(),
                                     time_left.num_minutes() % 60
                                 ))
@@ -1603,13 +1637,14 @@ async fn handle_dotd_command(
         }
     };
 
-    if active_users.is_empty() {
+    // Get active users count
+    if active_users.len() < 2 {
         return CreateInteractionResponse::Message(
             CreateInteractionResponseMessage::new()
                 .add_embed(
                     CreateEmbed::new()
-                        .title("🔍 No Active Users")
-                        .description("There are no active users who have grown their dick in the last 7 days! Everyone needs to get growing!")
+                        .title("🔍 Not Enough Active Users")
+                        .description("There need to be at least 2 active users to award Dick of the Day! Get more people growing!")
                         .color(0xAAAAAA)
                 )
         );
@@ -1725,7 +1760,7 @@ async fn handle_help_command(
                     .color(0x9B59B6) // Purple
                     .field(
                         "/grow", 
-                        "Grow your cucumber once per day. Your length can increase or decrease randomly (-5 to +10 cm). The command resets at 00:00 UTC every day.", 
+                        "Grow your cucumber once per day. Your length can increase or decrease randomly (-5 to +10 cm). First 7 growths are guaranteed to be positive.", 
                         false
                     )
                     .field(
@@ -1750,7 +1785,7 @@ async fn handle_help_command(
                     )
                     .field(
                         "/dickoftheday", 
-                        "Randomly selects one active user to be the Dick of the Day, granting them a bonus of 5-10 cm. This command can only be used once per server per day (resets at 00:00 UTC).", 
+                        "Randomly selects one active user to be the Dick of the Day, granting them a bonus of 5-10 cm.", 
                         false
                     )
                     .field(

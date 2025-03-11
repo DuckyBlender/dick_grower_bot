@@ -1,0 +1,32 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT last_grow, length, growth_count FROM dicks WHERE user_id = ? AND guild_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "last_grow",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "length",
+        "ordinal": 1,
+        "type_info": "Integer"
+      },
+      {
+        "name": "growth_count",
+        "ordinal": 2,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "73e185b583175fc601188ddd96cc43f9bea039164dc6525f283a9f7fdfc807d8"
+}
