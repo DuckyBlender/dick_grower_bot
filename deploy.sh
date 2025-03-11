@@ -5,4 +5,4 @@ docker stop dick-grower-bot || true && docker rm dick-grower-bot || true
 docker build -t dick-bot .
 
 # Run the new container
-docker run -d --restart unless-stopped --name dick-grower-bot -v dick_data:/app/data dick-bot
+docker run -d --name dick-grower-bot -v dick_data:/app/data dick-bot
