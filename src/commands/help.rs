@@ -48,8 +48,8 @@ pub async fn handle_help_command(
                         false
                     )
                     .field(
-                        "Daily Reset", 
-                        "Both the `/grow` command and `/dickoftheday` command reset at midnight UTC (00:00 UTC) every day.", 
+                        "Cooldowns", 
+                        "The `/grow` command has a 30 minute cooldown. The `/dickoftheday` command can be executed once per day and refreshes every 00:00 UTC.",
                         false
                     )
                     .footer(CreateEmbedFooter::new("May your cucumber grow long and prosperous! 🥒")),
