@@ -33,7 +33,7 @@ pub async fn handle_dotd_command(
 
             // Check if this is a new UTC day
             let time_left = check_utc_day_reset(&last_dotd);
-            if time_left.is_zero() {
+            if !time_left.is_zero() {
                 return CreateInteractionResponse::Message(
                     CreateInteractionResponseMessage::new()
                         .add_embed(
