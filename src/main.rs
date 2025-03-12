@@ -1,7 +1,6 @@
-use chrono::{Datelike, Duration, NaiveDateTime, Utc};
+use commands::*;
 use fern::colors::{Color, ColoredLevelConfig};
 use log::{LevelFilter, error, info};
-use rand::Rng;
 use serenity::all::{
     ActivityData, ButtonStyle, CommandInteraction, CreateActionRow, CreateButton, CreateCommand,
     CreateEmbed, CreateEmbedFooter, CreateInteractionResponse, CreateInteractionResponseMessage,
@@ -10,17 +9,17 @@ use serenity::async_trait;
 use serenity::builder::CreateCommandOption;
 use serenity::model::application::{CommandOptionType, Interaction};
 use serenity::model::gateway::Ready;
-use serenity::model::id::UserId;
 use serenity::prelude::*;
 use sqlx::SqlitePool;
 use sqlx::{Pool, Sqlite};
-use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::env;
 use std::sync::Arc;
 use std::time::{Duration as StdDuration, SystemTime, UNIX_EPOCH};
 use tokio::sync::RwLock;
 use tokio::time::{self, Instant};
+mod commands;
+mod time;
 
 struct Handler;
 
@@ -28,15 +27,9 @@ impl TypeMapKey for Bot {
     type Value = Arc<Bot>;
 }
 
-struct PvpChallenge {
-    bet: i64,
-    created_at: u64,
-    guild_id: u64,
-}
-
-struct Bot {
-    database: Pool<Sqlite>,
-    pvp_challenges: RwLock<HashMap<String, PvpChallenge>>,
+pub struct Bot {
+    pub database: Pool<Sqlite>,
+    pub pvp_challenges: RwLock<HashMap<String, PvpChallenge>>,
 }
 
 #[async_trait]
