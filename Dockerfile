@@ -22,7 +22,7 @@ RUN sqlx db create --database-url=sqlite:/app/data/database.sqlite
 RUN sqlx migrate run --database-url=sqlite:/app/data/database.sqlite
 
 # Prepare SQLx offline cache
-RUN cargo sqlx prepare --database-url sqlite:/app/data/database.sqlite
+# RUN cargo sqlx prepare --database-url sqlite:/app/data/database.sqlite
 
 # Build the application with SQLX_OFFLINE enabled
 ENV SQLX_OFFLINE=true
