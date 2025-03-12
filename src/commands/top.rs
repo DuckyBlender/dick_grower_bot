@@ -74,21 +74,10 @@ pub async fn handle_top_command(
             Err(_) => "Unknown User".to_string(),
         };
 
-        let emoji = if i == 0 {
-            "🍆 "
-        } else if user.length <= 0 {
-            "🥜 "
-        } else if user.length > 30 {
-            "🌵 "
-        } else {
-            ""
-        };
-
         description.push_str(&format!(
-            "{} **{}. {}{}**: {} cm\n",
+            "{} **{}. {}**: {} cm\n",
             medal,
             i + 1,
-            emoji,
             username,
             user.length
         ));

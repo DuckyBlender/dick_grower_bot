@@ -262,6 +262,5 @@ pub async fn handle_gift_command(
                     .color(0x3498DB) // Blue
                     .footer(CreateEmbedFooter::new("Generosity is the best policy!")),
             )
-            .ephemeral(true),
     )
 }

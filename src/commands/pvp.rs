@@ -3,7 +3,7 @@ use log::{error, info};
 use rand::Rng;
 use serenity::all::{
     ButtonStyle, CommandInteraction, CreateActionRow, CreateButton, CreateEmbed, CreateEmbedFooter,
-    CreateInteractionResponse, CreateInteractionResponseMessage,
+    CreateInteractionResponse, CreateInteractionResponseMessage, EditMessage,
 };
 use serenity::model::id::UserId;
 use serenity::prelude::*;
@@ -394,6 +394,12 @@ pub async fn handle_pvp_accept(
 
     // Drop the lock before making async calls
     drop(pvp_challenges);
+    
+    // Update the original message to remove button
+    let builder = EditMessage::new().components(vec![]);
+    if let Err(e) = component.message.edit(&ctx.http, builder) {
+        error!("Error removing the button!");
+    }
 
     // Get usernames
     let challenger = match ctx.http.get_user(challenger_id).await {
@@ -638,29 +644,25 @@ pub async fn handle_pvp_accept(
         "".to_string()
     };
 
-    component.create_response(
-        &ctx.http,
-        CreateInteractionResponse::UpdateMessage(
-            CreateInteractionResponseMessage::new()
-                .add_embed(
-                    CreateEmbed::new()
-                        .title("🏆 Dick Battle Results!")
-                        .description(format!(
-                            "The contest has concluded!\n\n**{}** rolled **{}**\n**{}** rolled **{}**\n\n**{}** wins **{} cm**!\n\nNew lengths:\n**{}**: {} cm\n**{}**: {} cm\n\n{}{}{}",
-                            challenger, challenger_roll,
-                            challenged, challenged_roll,
-                            winner_name, bet,
-                            winner_name, winner_length,
-                            loser_name, loser_length,
-                            taunt,
-                            bet_comment,
-                            streak_comment
-                        ))
-                        .color(0x2ECC71) // Green
-                        .footer(CreateEmbedFooter::new("Size DOES matter after all!"))
-                )
-                .components(vec![]), // Remove the button
-        ),
+    component.create_followup_message(&ctx.http,
+        CreateInteractionResponseMessage::new()
+            .add_embed(
+                CreateEmbed::new()
+                    .title("🏆 Dick Battle Results!")
+                    .description(format!(
+                        "The contest has concluded!\n\n**{}** rolled **{}**\n**{}** rolled **{}**\n\n**{}** wins **{} cm**!\n\nNew lengths:\n**{}**: {} cm\n**{}**: {} cm\n\n{}{}{}",
+                        challenger, challenger_roll,
+                        challenged, challenged_roll,
+                        winner_name, bet,
+                        winner_name, winner_length,
+                        loser_name, loser_length,
+                        taunt,
+                        bet_comment,
+                        streak_comment
+                    ))
+                    .color(0x2ECC71) // Green
+                    .footer(CreateEmbedFooter::new("Size DOES matter after all!"))
+            ),
     ).await?;
 
     Ok(())
