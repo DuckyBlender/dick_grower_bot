@@ -50,8 +50,9 @@ pub async fn handle_gift_command(
         }
     };
 
-    let user_id = match user_option.value.as_str() {
-        Some(id) => id,
+    // Extract the user ID from the user option - fix for the bug
+    let user_id = match user_option.value.as_user_id() {
+        Some(id) => id.to_string(),
         None => {
             return CreateInteractionResponse::Message(
                 CreateInteractionResponseMessage::new()

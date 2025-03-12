@@ -383,13 +383,14 @@ pub async fn handle_pvp_accept(
                             ))
                             .color(0xFF0000),
                     )
+                    .ephemeral(true), // Make this message ephemeral so only the user sees it
             ),
         ).await?;
-        return Ok(());
+        return Ok(()); // Don't remove the challenge, let others accept it
     }
 
-    // Get challenger info
-    pvp_challenges.remove(&challenge_id).unwrap();
+    // Get challenger info - removed from HashMap only when successfully accepted
+    let challenge = pvp_challenges.remove(&challenge_id).unwrap();
 
     // Drop the lock before making async calls
     drop(pvp_challenges);
