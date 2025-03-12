@@ -1,6 +1,6 @@
 use serenity::all::{
-    CommandInteraction, CreateEmbed,
-    CreateEmbedFooter, CreateInteractionResponse, CreateInteractionResponseMessage,
+    CommandInteraction, CreateEmbed, CreateEmbedFooter, CreateInteractionResponse,
+    CreateInteractionResponseMessage,
 };
 use serenity::prelude::*;
 

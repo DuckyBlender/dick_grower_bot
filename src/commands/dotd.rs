@@ -1,14 +1,14 @@
+use crate::Bot;
+use crate::time::check_utc_day_reset;
 use chrono::NaiveDateTime;
 use log::error;
 use rand::Rng;
 use serenity::all::{
-    CommandInteraction, CreateEmbed,
-    CreateEmbedFooter, CreateInteractionResponse, CreateInteractionResponseMessage,
+    CommandInteraction, CreateEmbed, CreateEmbedFooter, CreateInteractionResponse,
+    CreateInteractionResponseMessage,
 };
 use serenity::model::id::UserId;
 use serenity::prelude::*;
-use crate::time::check_utc_day_reset;
-use crate::Bot;
 
 pub async fn handle_dotd_command(
     ctx: &Context,

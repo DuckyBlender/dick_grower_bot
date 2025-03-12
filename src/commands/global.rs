@@ -1,13 +1,16 @@
+use crate::Bot;
 use log::error;
 use serenity::all::{
-    CommandInteraction, CreateEmbed,
-    CreateEmbedFooter, CreateInteractionResponse, CreateInteractionResponseMessage,
+    CommandInteraction, CreateEmbed, CreateEmbedFooter, CreateInteractionResponse,
+    CreateInteractionResponseMessage,
 };
 use serenity::model::id::UserId;
 use serenity::prelude::*;
-use crate::Bot;
 
-pub async fn handle_global_command(ctx: &Context, _: &CommandInteraction) -> CreateInteractionResponse {
+pub async fn handle_global_command(
+    ctx: &Context,
+    _: &CommandInteraction,
+) -> CreateInteractionResponse {
     let data = ctx.data.read().await;
     let bot = data.get::<Bot>().unwrap();
 

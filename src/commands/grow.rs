@@ -1,13 +1,13 @@
+use crate::Bot;
+use crate::time::check_30_minutes;
 use chrono::{NaiveDateTime, Utc};
 use log::error;
 use rand::Rng;
 use serenity::all::{
-    CommandInteraction, CreateEmbed,
-    CreateEmbedFooter, CreateInteractionResponse, CreateInteractionResponseMessage,
+    CommandInteraction, CreateEmbed, CreateEmbedFooter, CreateInteractionResponse,
+    CreateInteractionResponseMessage,
 };
 use serenity::prelude::*;
-use crate::time::check_30_minutes;
-use crate::Bot;
 
 pub async fn handle_grow_command(
     ctx: &Context,
@@ -212,4 +212,3 @@ pub async fn handle_grow_command(
         ),
     )
 }
-

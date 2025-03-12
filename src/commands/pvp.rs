@@ -1,14 +1,14 @@
+use crate::Bot;
 use log::error;
 use rand::Rng;
 use serenity::all::{
-    ButtonStyle, CommandInteraction, CreateActionRow, CreateButton, CreateEmbed,
-    CreateEmbedFooter, CreateInteractionResponse, CreateInteractionResponseMessage,
+    ButtonStyle, CommandInteraction, CreateActionRow, CreateButton, CreateEmbed, CreateEmbedFooter,
+    CreateInteractionResponse, CreateInteractionResponseMessage,
 };
 use serenity::model::id::UserId;
 use serenity::prelude::*;
 use std::cmp::Ordering;
 use std::time::{SystemTime, UNIX_EPOCH};
-use crate::Bot;
 
 pub struct PvpChallenge {
     bet: i64,

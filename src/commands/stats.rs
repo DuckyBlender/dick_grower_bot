@@ -1,12 +1,12 @@
+use crate::Bot;
+use crate::time::check_30_minutes;
 use chrono::NaiveDateTime;
 use log::error;
 use serenity::all::{
-    CommandInteraction, CreateEmbed,
-    CreateEmbedFooter, CreateInteractionResponse, CreateInteractionResponseMessage,
+    CommandInteraction, CreateEmbed, CreateEmbedFooter, CreateInteractionResponse,
+    CreateInteractionResponseMessage,
 };
 use serenity::prelude::*;
-use crate::time::check_30_minutes;
-use crate::Bot;
 
 pub async fn handle_stats_command(
     ctx: &Context,
@@ -158,4 +158,3 @@ pub async fn handle_stats_command(
             .ephemeral(true),
     )
 }
-
