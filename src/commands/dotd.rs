@@ -1,7 +1,7 @@
 use crate::Bot;
 use crate::time::check_utc_day_reset;
 use chrono::NaiveDateTime;
-use log::error;
+use log::{error, info};
 use rand::Rng;
 use serenity::all::{
     CommandInteraction, CreateEmbed, CreateEmbedFooter, CreateInteractionResponse,
@@ -53,6 +53,7 @@ pub async fn handle_dotd_command(
         }
         Ok(None) => {
             // New guild, create a record with a date far in the past
+            info!("New guild detected, adding guild {} to database", guild_id);
             if let Err(why) = sqlx::query!(
                 "INSERT INTO guild_settings (guild_id, last_dotd)
                  VALUES (?, datetime('now', '-2 days'))",

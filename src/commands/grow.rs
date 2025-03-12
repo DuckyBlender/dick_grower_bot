@@ -57,6 +57,8 @@ pub async fn handle_grow_command(
         }
         Ok(None) => {
             // New user, create a record
+            info!("New user detected, adding user {} ({}) in guild id {} to database", 
+            command.user.name, user_id, guild_id);
             match sqlx::query!(
                 "INSERT INTO dicks (user_id, guild_id, length, last_grow, growth_count, dick_of_day_count, 
                                    pvp_wins, pvp_losses, pvp_max_streak, pvp_current_streak,

@@ -1,5 +1,5 @@
 use crate::Bot;
-use log::error;
+use log::{error, info};
 use serenity::all::{
     CommandInteraction, CreateEmbed, CreateEmbedFooter, CreateInteractionResponse,
     CreateInteractionResponseMessage,
@@ -15,11 +15,86 @@ pub async fn handle_gift_command(
     let bot = data.get::<Bot>().unwrap();
 
     let options = &command.data.options;
-    let user_option = options.iter().find(|o| o.name == "user").unwrap();
-    let amount_option = options.iter().find(|o| o.name == "amount").unwrap();
+    info!("Options: {:?}", options);
+    
+    // Safely extract options
+    let user_option = match options.iter().find(|o| o.name == "user") {
+        Some(option) => option,
+        None => {
+            return CreateInteractionResponse::Message(
+                CreateInteractionResponseMessage::new()
+                    .add_embed(
+                        CreateEmbed::new()
+                            .title("❌ Missing User")
+                            .description("You need to specify a user to gift centimeters to!")
+                            .color(0xFF0000),
+                    )
+                    .ephemeral(true),
+            );
+        }
+    };
+    
+    let amount_option = match options.iter().find(|o| o.name == "amount") {
+        Some(option) => option,
+        None => {
+            return CreateInteractionResponse::Message(
+                CreateInteractionResponseMessage::new()
+                    .add_embed(
+                        CreateEmbed::new()
+                            .title("❌ Missing Amount")
+                            .description("You need to specify how many centimeters to gift!")
+                            .color(0xFF0000),
+                    )
+                    .ephemeral(true),
+            );
+        }
+    };
 
-    let user_id = user_option.value.as_str().unwrap();
-    let amount = amount_option.value.as_i64().unwrap();
+    let user_id = match user_option.value.as_str() {
+        Some(id) => id,
+        None => {
+            return CreateInteractionResponse::Message(
+                CreateInteractionResponseMessage::new()
+                    .add_embed(
+                        CreateEmbed::new()
+                            .title("❌ Invalid User")
+                            .description("Could not parse the user ID.")
+                            .color(0xFF0000),
+                    )
+                    .ephemeral(true),
+            );
+        }
+    };
+    
+    let amount = match amount_option.value.as_i64() {
+        Some(val) => val,
+        None => {
+            return CreateInteractionResponse::Message(
+                CreateInteractionResponseMessage::new()
+                    .add_embed(
+                        CreateEmbed::new()
+                            .title("❌ Invalid Amount")
+                            .description("The amount must be a valid number.")
+                            .color(0xFF0000),
+                    )
+                    .ephemeral(true),
+            );
+        }
+    };
+
+    // Check if amount is positive
+    if amount <= 0 {
+        return CreateInteractionResponse::Message(
+            CreateInteractionResponseMessage::new()
+                .add_embed(
+                    CreateEmbed::new()
+                        .title("❌ Invalid Amount")
+                        .description("You need to gift at least 1 cm!")
+                        .color(0xFF0000),
+                )
+                .ephemeral(true),
+        );
+    }
 
     let guild_id = command.guild_id.unwrap().to_string();
     let sender_id = command.user.id.to_string();
@@ -36,6 +111,8 @@ pub async fn handle_gift_command(
         Ok(Some(record)) => record.length,
         Ok(None) => {
             // Create new user
+            info!("New user detected, adding user {} ({}) in guild id {} to database", 
+                 command.user.name, sender_id, guild_id);
             match sqlx::query!(
                 "INSERT INTO dicks (user_id, guild_id, length, last_grow, dick_of_day_count, 
                                    pvp_wins, pvp_losses, pvp_max_streak, pvp_current_streak,
