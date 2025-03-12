@@ -137,17 +137,30 @@ pub async fn handle_pvp_command(
 
     let components = vec![CreateActionRow::Buttons(vec![accept_button])];
 
+    // Create bet description based on size
+    let bet_description = if bet >= 50 {
+        "**HOLY MOLY!** This is a high-stakes dick measuring contest!"
+    } else if bet >= 25 {
+        "That's quite a sizeable wager! Someone's feeling confident!"
+    } else if bet >= 10 {
+        "A decent bet! More than a day's growth on the line."
+    } else if bet >= 5 {
+        "A reasonable bet for a friendly competition."
+    } else {
+        "A cautious bet. Not everyone's ready to risk their precious centimeters!"
+    };
+
     CreateInteractionResponse::Message(
         CreateInteractionResponseMessage::new()
             .add_embed(
                 CreateEmbed::new()
-                    .title("🥊 Dick Measuring Contest Challenge!")
+                    .title("🥊 Dick Battle!")
                     .description(format!(
-                        "**{}** has started a dick measuring contest!\n\nBet amount: **{} cm**\n\nAnyone can accept this challenge by clicking the button below",
-                        challenger, bet
+                        "**{}** has started a dick battle!\n\nBet amount: **{} cm**\n\n{}\n\nAnyone can accept this challenge by clicking the button below",
+                        challenger, bet, bet_description
                     ))
                     .color(0x3498DB) // Blue
-                    .footer(CreateEmbedFooter::new("May the longest dong win!")),
+                    .footer(CreateEmbedFooter::new("May the strongest dong win!")),
             )
             .components(components),
     )
@@ -360,7 +373,7 @@ pub async fn handle_pvp_accept(
                         CreateEmbed::new()
                             .title("❌ Insufficient Length")
                             .description(format!(
-                                "You only have **{} cm** but you're trying to accept a bet of **{} cm**!\n\nYou can't compete with what you don't have. Grow a bit more first.",
+                                "You only have **{} cm** left but you're trying to accept a bet of **{} cm**!\n\nYou can't compete with what you don't have. Grow a bit more first.",
                                 challenged_length, bet
                             ))
                             .color(0xFF0000),
@@ -407,25 +420,37 @@ pub async fn handle_pvp_accept(
                 challenger_roll,
             ),
             Ordering::Equal => {
-                // It's a tie! Let's handle this with a special case
+                // It's a tie! Handle this special case
+                let tie_comment = if bet >= 30 {
+                    format!(
+                        "A {} cm bet and it ends in a tie?! The dick gods must be laughing!",
+                        bet
+                    )
+                } else if bet >= 15 {
+                    "Insanity! Neither dick emerged victorious today!".to_string()
+                } else {
+                    "What are the odds?! Both measuring exactly the same!".to_string()
+                };
+
                 component.create_response(
-                &ctx.http,
-                CreateInteractionResponse::UpdateMessage(
-                    CreateInteractionResponseMessage::new()
-                        .add_embed(
-                            CreateEmbed::new()
-                                .title("🤯 INCREDIBLE! It's a tie!")
-                                .description(format!(
-                                    "The contest has concluded with an unbelievable outcome!\n\n**{}** rolled **{}**\n**{}** rolled **{}**\n\nBoth dicks measured EXACTLY the same! What are the odds?!\n\nThe bet has been returned to both competitors. No winners, no losers today!",
-                                    challenger, challenger_roll,
-                                    challenged, challenged_roll
-                                ))
-                                .color(0x9b59b6) // Purple for a tie
-                                .footer(CreateEmbedFooter::new("A moment that will go down in dick-measuring history!"))
-                        )
-                        .components(vec![]), // Remove the button
-                ),
-            ).await?;
+                    &ctx.http,
+                    CreateInteractionResponse::UpdateMessage(
+                        CreateInteractionResponseMessage::new()
+                            .add_embed(
+                                CreateEmbed::new()
+                                    .title("🤯 INCREDIBLE! It's a Tie!")
+                                    .description(format!(
+                                        "The contest has concluded with an unbelievable outcome!\n\n**{}** rolled **{}**\n**{}** rolled **{}**\n\n{}\n\nBoth dicks measured EXACTLY the same! The bet has been returned to both competitors. No winners, no losers today!",
+                                        challenger, challenger_roll,
+                                        challenged, challenged_roll,
+                                        tie_comment
+                                    ))
+                                    .color(0x9b59b6) // Purple for a tie
+                                    .footer(CreateEmbedFooter::new("A moment that will go down in dick-measuring history!"))
+                            )
+                            .components(vec![]), // Remove the button
+                    ),
+                ).await?;
 
                 return Ok(());
             }
@@ -521,38 +546,86 @@ pub async fn handle_pvp_accept(
         Err(_) => 0,
     };
 
-    // Create a funny taunt
+    // Create a funny taunt based on margin of victory and bet size
     let taunt = if winner_roll - loser_roll > 50 {
-        format!(
-            "It wasn't even close! {}'s dick destroyed {}'s in an absolute massacre!",
-            winner_name, loser_name
-        )
+        if bet >= 30 {
+            format!(
+                "💀 It wasn't even close! {}'s dick absolutely DEMOLISHED {}'s in a historic beatdown! Those {} centimeters will be remembered for generations! 📜",
+                winner_name, loser_name, bet
+            )
+        } else {
+            format!(
+                "💀 It wasn't even close! {}'s dick destroyed {}'s in an absolute massacre! ⚰️",
+                winner_name, loser_name
+            )
+        }
     } else if winner_roll - loser_roll > 20 {
-        format!(
-            "{}'s dick clearly outclassed {}'s in this epic showdown!",
-            winner_name, loser_name
-        )
+        if bet >= 20 {
+            format!(
+                "🏆 {}'s dick clearly outclassed {}'s in this epic showdown! That's {} cm of pride changing hands!",
+                winner_name, loser_name, bet
+            )
+        } else {
+            format!(
+                "🏆 {}'s dick clearly outclassed {}'s in this epic showdown!",
+                winner_name, loser_name
+            )
+        }
     } else if winner_roll - loser_roll > 5 {
+        if bet >= 15 {
+            format!(
+                "🥇 A close match, but {}'s dick had just enough extra length to claim victory and snatch those {} valuable centimeters!",
+                winner_name, bet
+            )
+        } else {
+            format!(
+                "🥇 A close match, but {}'s dick had just enough extra length to claim victory!",
+                winner_name
+            )
+        }
+    } else if bet >= 25 {
         format!(
-            "A close match, but {}'s dick had just enough extra length to claim victory!",
-            winner_name
+            "😱 WHAT A NAIL-BITER! {}'s dick barely edged out {}'s by a hair's width! Those {} centimeters were almost too close to call!",
+            winner_name, loser_name, bet
         )
     } else {
         format!(
-            "That was incredibly close! {}'s dick barely edged out {}'s by a hair's width!",
+            "😮 That was incredibly close! {}'s dick barely edged out {}'s by a hair's width!",
             winner_name, loser_name
         )
+    };
+
+    // Add a comment on the size of the bet
+    let bet_comment = if bet >= 50 {
+        format!(
+            "\n\n💰 **MASSIVE BET!** {} cm is roughly a week's worth of growth! Talk about high stakes!",
+            bet
+        )
+    } else if bet >= 30 {
+        format!(
+            "\n\n💰 A **huge {} cm bet**! That's several days of growth on the line!",
+            bet
+        )
+    } else if bet >= 15 {
+        format!(
+            "\n\n💰 A solid **{} cm bet** - more than a day's worth of growth!",
+            bet
+        )
+    } else if bet >= 10 {
+        "\n\n💰 A respectable wager, putting a full day's growth at stake!".to_string()
+    } else {
+        "".to_string() // No special comment for smaller bets
     };
 
     // Streak comment
     let streak_comment = if new_winner_streak >= 5 {
         format!(
-            "\n\n🔥 **{}** is on a **{}-win streak**! Absolutely dominating!",
+            "\n\n🔥 **{}** is on a **{}-win streak**! Absolutely dominating! 👑",
             winner_name, new_winner_streak
         )
     } else if new_winner_streak >= 3 {
         format!(
-            "\n\n🔥 **{}** is on a **{}-win streak**!",
+            "\n\n🔥 **{}** is on a **{}-win streak**! 📈",
             winner_name, new_winner_streak
         )
     } else {
@@ -565,15 +638,16 @@ pub async fn handle_pvp_accept(
             CreateInteractionResponseMessage::new()
                 .add_embed(
                     CreateEmbed::new()
-                        .title("🏆 Dick Measuring Contest Results!")
+                        .title("🏆 Dick Battle Results!")
                         .description(format!(
-                            "The contest has concluded!\n\n**{}** rolled **{}**\n**{}** rolled **{}**\n\n**{}** wins **{} cm**!\n\nNew lengths:\n**{}**: {} cm\n**{}**: {} cm\n\n{}{}",
+                            "The contest has concluded!\n\n**{}** rolled **{}**\n**{}** rolled **{}**\n\n**{}** wins **{} cm**!\n\nNew lengths:\n**{}**: {} cm\n**{}**: {} cm\n\n{}{}{}",
                             challenger, challenger_roll,
                             challenged, challenged_roll,
                             winner_name, bet,
                             winner_name, winner_length,
                             loser_name, loser_length,
                             taunt,
+                            bet_comment,
                             streak_comment
                         ))
                         .color(0x2ECC71) // Green

@@ -40,7 +40,7 @@ pub async fn handle_dotd_command(
                             CreateEmbed::new()
                                 .title("⏰ Dick of the Day Already Awarded!")
                                 .description(format!(
-                                    "This server has already crowned a Dick of the Day today!\n\nNext Dick of the Day in **{}h {}m**)",
+                                    "This server has already crowned a Dick of the Day today!\n\nNext Dick of the Day in **{}h {}m**",
                                     time_left.1.num_hours(),
                                     time_left.1.num_minutes() % 60
                                 ))
@@ -103,13 +103,14 @@ pub async fn handle_dotd_command(
         }
     };
 
-    if active_users.is_empty() {
+    // Get active users count
+    if active_users.len() < 2 {
         return CreateInteractionResponse::Message(
             CreateInteractionResponseMessage::new()
                 .add_embed(
                     CreateEmbed::new()
-                        .title("🔍 No Active Users")
-                        .description("There are no active users who have grown their dick in the last 7 days! Everyone needs to get growing!")
+                        .title("🔍 Not Enough Active Users")
+                        .description("There need to be at least 2 active users to award Dick of the Day! Get more people growing!")
                         .color(0xAAAAAA)
                 )
         );

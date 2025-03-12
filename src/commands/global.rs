@@ -72,10 +72,17 @@ pub async fn handle_global_command(
 
         let guild_name = match user.guild_id.parse::<u64>() {
             Ok(id) => match ctx.http.get_guild(id.into()).await {
-                Ok(guild) => guild.name,
-                Err(_) => "Unknown Server".to_string(),
+                Ok(guild) => {
+                    // Only show guild name if it's a community server (public)
+                    if guild.features.contains(&"COMMUNITY".to_string()) {
+                        guild.name
+                    } else {
+                        "private server".to_string()
+                    }
+                }
+                Err(_) => "unknown server".to_string(),
             },
-            Err(_) => "Unknown Server".to_string(),
+            Err(_) => "unknown server".to_string(),
         };
 
         let emoji = if i == 0 {

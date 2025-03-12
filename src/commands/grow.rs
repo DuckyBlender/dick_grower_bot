@@ -1,7 +1,7 @@
 use crate::Bot;
 use crate::time::check_30_minutes;
-use chrono::{NaiveDateTime, Utc};
-use log::error;
+use chrono::NaiveDateTime;
+use log::{error, info};
 use rand::Rng;
 use serenity::all::{
     CommandInteraction, CreateEmbed, CreateEmbedFooter, CreateInteractionResponse,
@@ -19,9 +19,9 @@ pub async fn handle_grow_command(
     let user_id = command.user.id.to_string();
     let guild_id = command.guild_id.unwrap().to_string();
 
-    // Check if the user has grown today
-    let _last_grow = match sqlx::query!(
-        "SELECT last_grow FROM dicks WHERE user_id = ? AND guild_id = ?",
+    // Check if the user has grown today and get their stats
+    let user_stats = match sqlx::query!(
+        "SELECT last_grow, length, growth_count FROM dicks WHERE user_id = ? AND guild_id = ?",
         user_id,
         guild_id
     )
@@ -46,21 +46,22 @@ pub async fn handle_grow_command(
                                 ))
                                 .color(0xFF5733)
                                 .footer(CreateEmbedFooter::new(
-                                    "Patience is a virtue... especially for your little buddy.",
+                                    "Patience is key... especially for your little buddy.",
                                 ))
                         )
                 );
             }
 
-            last_grow
+            // Return user stats
+            (record.growth_count, record.length)
         }
         Ok(None) => {
             // New user, create a record
             match sqlx::query!(
-                "INSERT INTO dicks (user_id, guild_id, length, last_grow, dick_of_day_count, 
+                "INSERT INTO dicks (user_id, guild_id, length, last_grow, growth_count, dick_of_day_count, 
                                    pvp_wins, pvp_losses, pvp_max_streak, pvp_current_streak,
                                    cm_won, cm_lost)
-                 VALUES (?, ?, 0, datetime('now'), 0, 0, 0, 0, 0, 0, 0)",
+                 VALUES (?, ?, 0, datetime('now'), 0, 0, 0, 0, 0, 0, 0, 0)",
                 user_id,
                 guild_id
             )
@@ -73,7 +74,8 @@ pub async fn handle_grow_command(
                 }
             };
 
-            Utc::now().naive_utc()
+            // New user with 0 growth count
+            (0, 0)
         }
         Err(why) => {
             error!("Database error: {:?}", why);
@@ -90,12 +92,36 @@ pub async fn handle_grow_command(
         }
     };
 
-    // Generate growth amount (-5 to 10 cm)
-    let growth = rand::rng().random_range(-5..=10);
+    // Check if user is in grace period (first 7 growths)
+    let is_grace_period = user_stats.0 < 7;
 
-    // Update the database
+    // Generate growth amount based on whether user is in grace period
+    let growth = if is_grace_period {
+        // During grace period: 1 to 10 cm (only positive)
+        info!(
+            "User {} is in grace period (growth #{}), generating positive growth only",
+            user_id,
+            user_stats.0 + 1
+        );
+        rand::rng().random_range(1..=10)
+    } else {
+        // After grace period: -5 to 10 cm with more positive chance
+        let sign_ratio: f32 = 0.80; // 80% chance of positive growth
+        let sign_ratio_percent = (sign_ratio * 100.0).round() as u32;
+
+        // Generate a random value
+        let is_positive = rand::rng().random_ratio(sign_ratio_percent, 100);
+
+        if is_positive {
+            rand::rng().random_range(1..=10) // Positive growth
+        } else {
+            rand::rng().random_range(-5..=-1) // Negative growth (never 0)
+        }
+    };
+
+    // Update the database - increment growth count too
     match sqlx::query!(
-        "UPDATE dicks SET length = length + ?, last_grow = datetime('now')
+        "UPDATE dicks SET length = length + ?, last_grow = datetime('now'), growth_count = growth_count + 1
          WHERE user_id = ? AND guild_id = ?",
         growth,
         user_id,
@@ -171,15 +197,6 @@ pub async fn handle_grow_command(
             ),
             0x66FF66, // Light green
         )
-    } else if growth == 0 {
-        (
-            "😐 No Change",
-            format!(
-                "Your dick didn't grow at all today.\nYour length: **{} cm**\n\nMaybe try some positive affirmations?",
-                new_length
-            ),
-            0xFFFF33, // Yellow
-        )
     } else if growth >= -3 {
         (
             "📉 Minor Shrinkage",
@@ -189,6 +206,7 @@ pub async fn handle_grow_command(
             ),
             0xFF9933, // Orange
         )
+        // impossible to get 0 growth
     } else {
         (
             "💀 CATASTROPHIC SHRINKAGE!",

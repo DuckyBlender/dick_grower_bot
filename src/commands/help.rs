@@ -19,7 +19,7 @@ pub async fn handle_help_command(
                     .color(0x9B59B6) // Purple
                     .field(
                         "/grow", 
-                        "Grow your cucumber once per day. Your length can increase or decrease randomly (-5 to +10 cm). The command resets at 00:00 UTC every day.", 
+                        "Grow your cucumber once per day. Your length can increase or decrease randomly (-5 to +10 cm). First 7 growths are guaranteed to be positive.", 
                         false
                     )
                     .field(
@@ -34,7 +34,7 @@ pub async fn handle_help_command(
                     )
                     .field(
                         "/pvp", 
-                        "Start a dick measuring contest with someone. Enter the amount of centimeters you want to bet. If you win, you gain that length from your opponent. If you lose, you lose that length to them.", 
+                        "Start a dick battle with someone. Enter the amount of centimeters you want to bet. If you win, you gain that length from your opponent. If you lose, you lose that length to them.", 
                         false
                     )
                     .field(
@@ -44,7 +44,7 @@ pub async fn handle_help_command(
                     )
                     .field(
                         "/dickoftheday", 
-                        "Randomly selects one active user to be the Dick of the Day, granting them a bonus of 5-10 cm. This command can only be used once per server per day (resets at 00:00 UTC).", 
+                        "Randomly selects one active user to be the Dick of the Day, granting them a bonus of 5-10 cm.", 
                         false
                     )
                     .field(

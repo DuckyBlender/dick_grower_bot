@@ -15,7 +15,26 @@ pub async fn handle_stats_command(
     let data = ctx.data.read().await;
     let bot = data.get::<Bot>().unwrap();
 
-    let user_id = command.user.id.to_string();
+    // Check if a user was specified
+    let target_user = if let Some(option) = command.data.options.first() {
+        match option.value.as_user_id() {
+            Some(user_id) => {
+                match user_id.to_user(ctx).await {
+                    Ok(user) => user,
+                    Err(_) => {
+                        // Could not fetch user, fallback to command user
+                        command.user.clone()
+                    }
+                }
+            }
+            None => command.user.clone(),
+        }
+    } else {
+        command.user.clone()
+    };
+
+    let is_self = target_user.id == command.user.id;
+    let user_id = target_user.id.to_string();
     let guild_id = command.guild_id.unwrap().to_string();
 
     // Get user stats
@@ -33,14 +52,18 @@ pub async fn handle_stats_command(
     {
         Ok(Some(stats)) => stats,
         Ok(None) => {
+            let msg = if is_self {
+                "You haven't started growing your dick yet! Use /grow to begin your journey to greatness."
+            } else {
+                "This user hasn't started growing their dick yet!"
+            };
+
             return CreateInteractionResponse::Message(
                 CreateInteractionResponseMessage::new()
                     .add_embed(
                         CreateEmbed::new()
                             .title("❓ No Stats Found")
-                            .description(
-                                "You haven't started growing your dick yet! Use /grow to begin your journey to greatness.",
-                            )
+                            .description(msg)
                             .color(0xAAAAAA),
                     )
                     .ephemeral(true),
@@ -53,7 +76,7 @@ pub async fn handle_stats_command(
                     .add_embed(
                         CreateEmbed::new()
                             .title("⚠️ Database Error")
-                            .description("Failed to retrieve your stats. The server's ruler broke.")
+                            .description("Failed to retrieve the stats. The server's ruler broke.")
                             .color(0xFF0000),
                     )
                     .ephemeral(true),
@@ -81,20 +104,26 @@ pub async fn handle_stats_command(
         }
     };
 
-    // Calculate growth status
+    // Calculate growth status - only show for own user
     let last_grow = NaiveDateTime::parse_from_str(&user_stats.last_grow, "%Y-%m-%d %H:%M:%S")
         .unwrap_or_default();
 
     // Check if user can grow today
     let time_left = check_30_minutes(&last_grow);
-    let growth_status = if time_left.0 {
-        "✅ You can grow now! Use /grow".to_string()
+    let growth_status = if is_self {
+        if time_left.0 {
+            "✅ You can grow now! Use /grow".to_string()
+        } else {
+            format!(
+                "⏰ Next growth in: **{}h {}m**",
+                time_left.1.num_hours(),
+                time_left.1.num_minutes() % 60
+            )
+        }
+    } else if time_left.0 {
+        "✅ Can grow now".to_string()
     } else {
-        format!(
-            "⏰ Next growth in **{}h {}m**",
-            time_left.1.num_hours(),
-            time_left.1.num_minutes() % 60
-        )
+        "⏰ Already grew today".to_string()
     };
 
     // Calculate win rate
@@ -107,27 +136,46 @@ pub async fn handle_stats_command(
 
     // Funny comment based on length
     let length_comment = if user_stats.length <= 0 {
-        "Your dick is practically an innie at this point. Keep trying!"
+        if is_self {
+            "Your dick is practically an innie at this point. Keep trying!"
+        } else {
+            "Their dick is practically an innie at this point. Tragic!"
+        }
     } else if user_stats.length < 10 {
         "It's... cute? At least that's what they'll say to be nice."
     } else if user_stats.length < 20 {
-        "Not bad! You're in the average zone. But who wants to be average?"
+        "Not bad! In the average zone. But who wants to be average?"
     } else if user_stats.length < 30 {
-        "Impressive length! You're packing some serious heat down there."
+        "Impressive length! That's some serious heat down there."
     } else if user_stats.length < 50 {
-        "WOW! That's a third leg, not a dick! Do you need special pants?"
+        "WOW! That's a third leg, not a dick! Special pants required?"
     } else {
-        "LEGENDARY! Scientists want to study your mutation. BEWARE!"
+        "LEGENDARY! Scientists want to study this mutation. BEWARE!"
+    };
+
+    let title = format!("🍆 {}'s Dick Stats", target_user.name);
+
+    let description = if is_self {
+        "Here's everything you wanted to know about your cucumber (and probably some things you didn't):".to_string()
+    } else {
+        format!(
+            "Here's everything to know about {}'s cucumber:",
+            target_user.name
+        )
+    };
+
+    let footer_text = if is_self {
+        "Remember to /grow every day for maximum results!"
+    } else {
+        "Use /stats without parameters to see your own stats!"
     };
 
     CreateInteractionResponse::Message(
         CreateInteractionResponseMessage::new()
             .add_embed(
                 CreateEmbed::new()
-                    .title(format!("🍆 {}'s Dick Stats", command.user.name))
-                    .description(
-                        "Here's everything you wanted to know about your cucumber (and probably some things you didn't):".to_string(),
-                    )
+                    .title(title)
+                    .description(description)
                     .color(0x9B59B6) // Purple
                     .field("Current Length", format!("**{} cm**", user_stats.length), true)
                     .field("Server Rank", format!("**#{}**", rank), true)
@@ -152,8 +200,8 @@ pub async fn handle_stats_command(
                         false
                     )
                     .field("Professional Assessment", length_comment, false)
-                    .thumbnail(command.user.face())
-                    .footer(CreateEmbedFooter::new("Remember to /grow every day for maximum results!")),
+                    .thumbnail(target_user.face())
+                    .footer(CreateEmbedFooter::new(footer_text)),
             )
             .ephemeral(true),
     )
