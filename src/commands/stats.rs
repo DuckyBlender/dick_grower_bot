@@ -111,16 +111,16 @@ pub async fn handle_stats_command(
     // Check if user can grow today
     let time_left = check_30_minutes(&last_grow);
     let growth_status = if is_self {
-        if time_left.0 {
+        if time_left.is_zero() {
             "✅ You can grow now! Use /grow".to_string()
         } else {
             format!(
                 "⏰ Next growth in: **{}h {}m**",
-                time_left.1.num_hours(),
-                time_left.1.num_minutes() % 60
+                time_left.num_hours(),
+                time_left.num_minutes() % 60
             )
         }
-    } else if time_left.0 {
+    } else if time_left.is_zero() {
         "✅ Can grow now".to_string()
     } else {
         "⏰ Already grew today".to_string()

@@ -33,7 +33,7 @@ pub async fn handle_dotd_command(
 
             // Check if this is a new UTC day
             let time_left = check_utc_day_reset(&last_dotd);
-            if time_left.0 {
+            if time_left.is_zero() {
                 return CreateInteractionResponse::Message(
                     CreateInteractionResponseMessage::new()
                         .add_embed(
@@ -41,8 +41,8 @@ pub async fn handle_dotd_command(
                                 .title("⏰ Dick of the Day Already Awarded!")
                                 .description(format!(
                                     "This server has already crowned a Dick of the Day today!\n\nNext Dick of the Day in **{}h {}m**",
-                                    time_left.1.num_hours(),
-                                    time_left.1.num_minutes() % 60
+                                    time_left.num_hours(),
+                                    time_left.num_minutes() % 60
                                 ))
                                 .color(0xFF5733)
                         )

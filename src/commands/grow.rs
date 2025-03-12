@@ -33,7 +33,7 @@ pub async fn handle_grow_command(
                 .unwrap_or_default();
 
             let time_left = check_30_minutes(&last_grow);
-            if time_left.0 {
+            if time_left.is_zero() {
                 return CreateInteractionResponse::Message(
                     CreateInteractionResponseMessage::new()
                         .add_embed(
@@ -41,8 +41,8 @@ pub async fn handle_grow_command(
                                 .title("🕒 Hold up, speedy!")
                                 .description(format!(
                                     "You've already grown your dick today! Try again in **{}h {}m**\n\nExcessive stimulation might cause injuries, you know?",
-                                    time_left.1.num_hours(),
-                                    time_left.1.num_minutes() % 60
+                                    time_left.num_hours(),
+                                    time_left.num_minutes() % 60
                                 ))
                                 .color(0xFF5733)
                                 .footer(CreateEmbedFooter::new(
