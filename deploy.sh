@@ -1,3 +1,6 @@
+# Git pull
+git pull
+
 # Stop and remove the old container if it exists
 docker stop dick-grower-bot || true && docker rm dick-grower-bot || true
 
