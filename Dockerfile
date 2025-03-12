@@ -1,27 +1,17 @@
-# Planner stage - Generate recipe for cargo-chef
-FROM rust:slim-bullseye AS planner
-WORKDIR /app
-RUN cargo install cargo-chef
-COPY . .
-RUN cargo chef prepare --recipe-path recipe.json
-
-# Builder stage - Build dependencies and application
+# Build stage
 FROM rust:slim-bullseye AS builder
-WORKDIR /app
 
 # Install SQLite and other dependencies for building
 RUN apt update && apt install -y libsqlite3-dev clang && \
     rm -rf /var/lib/apt/lists/*
 
-# Install cargo chef and SQLx CLI
-RUN cargo install cargo-chef && \
-    cargo install sqlx-cli --no-default-features --features sqlite-unbundled,rustls
+# Install SQLx CLI
+RUN cargo install sqlx-cli --no-default-features --features sqlite-unbundled,rustls
 
-# Prepare cached dependencies
-COPY --from=planner /app/recipe.json recipe.json
-RUN cargo chef cook --release --recipe-path recipe.json
+# Set working directory
+WORKDIR /app
 
-# Copy actual source code
+# Copy your entire project
 COPY . .
 
 # Create database directory
