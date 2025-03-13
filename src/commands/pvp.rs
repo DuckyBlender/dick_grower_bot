@@ -397,7 +397,7 @@ pub async fn handle_pvp_accept(
     
     // Update the original message to remove button
     let builder = EditMessage::new().components(vec![]);
-    if let Err(e) = component.message.edit(&ctx.http, builder).await {
+    if let Err(e) = component.message.edit(&ctx.http, builder) {
         error!("Error removing the button!");
     }
 
