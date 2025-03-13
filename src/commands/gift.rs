@@ -16,7 +16,7 @@ pub async fn handle_gift_command(
 
     let options = &command.data.options;
     info!("Options: {:?}", options);
-    
+
     // Safely extract options
     let user_option = match options.iter().find(|o| o.name == "user") {
         Some(option) => option,
@@ -33,7 +33,7 @@ pub async fn handle_gift_command(
             );
         }
     };
-    
+
     let amount_option = match options.iter().find(|o| o.name == "amount") {
         Some(option) => option,
         None => {
@@ -50,7 +50,7 @@ pub async fn handle_gift_command(
         }
     };
 
-    // Extract the user ID from the user option - fix for the bug
+    // Extract the user ID from the user option
     let user_id = match user_option.value.as_user_id() {
         Some(id) => id.to_string(),
         None => {
@@ -66,7 +66,7 @@ pub async fn handle_gift_command(
             );
         }
     };
-    
+
     let amount = match amount_option.value.as_i64() {
         Some(val) => val,
         None => {
@@ -83,8 +83,8 @@ pub async fn handle_gift_command(
         }
     };
 
-    // Check if amount is positive
-    if amount <= 0 {
+    // Check if the amount is valid, should be verified by discord but never trust front end input
+    if amount < 1 {
         return CreateInteractionResponse::Message(
             CreateInteractionResponseMessage::new()
                 .add_embed(
@@ -112,8 +112,10 @@ pub async fn handle_gift_command(
         Ok(Some(record)) => record.length,
         Ok(None) => {
             // Create new user
-            info!("New user detected, adding user {} ({}) in guild id {} to database", 
-                 command.user.name, sender_id, guild_id);
+            info!(
+                "New user detected, adding user {} ({}) in guild id {} to database",
+                command.user.name, sender_id, guild_id
+            );
             match sqlx::query!(
                 "INSERT INTO dicks (user_id, guild_id, length, last_grow, dick_of_day_count, 
                                    pvp_wins, pvp_losses, pvp_max_streak, pvp_current_streak,

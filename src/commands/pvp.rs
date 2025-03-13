@@ -57,8 +57,10 @@ pub async fn handle_pvp_command(
         Ok(Some(record)) => record.length,
         Ok(None) => {
             // Create new user
-            info!("New user detected, adding user {} ({}) in guild id {} to database", 
-            command.user.name, challenger_id, guild_id);
+            info!(
+                "New user detected, adding user {} ({}) in guild id {} to database",
+                command.user.name, challenger_id, guild_id
+            );
             match sqlx::query!(
                 "INSERT INTO dicks (user_id, guild_id, length, last_grow, dick_of_day_count, 
                                    pvp_wins, pvp_losses, pvp_max_streak, pvp_current_streak,
@@ -328,7 +330,10 @@ pub async fn handle_pvp_accept(
         Ok(Some(record)) => record.length,
         Ok(None) => {
             // Create new user
-            info!("New user detected, adding user {} ({}) in guild id {} to database", component.user.name, challenged_id, guild_id);
+            info!(
+                "New user detected, adding user {} ({}) in guild id {} to database",
+                component.user.name, challenged_id, guild_id
+            );
             match sqlx::query!(
                 "INSERT INTO dicks (user_id, guild_id, length, last_grow, dick_of_day_count, 
                                    pvp_wins, pvp_losses, pvp_max_streak, pvp_current_streak,
@@ -369,7 +374,10 @@ pub async fn handle_pvp_accept(
     };
 
     if challenged_length < bet {
-        info!("Challenged user has insufficient length: {} < {}", challenged_length, bet);
+        info!(
+            "Challenged user has insufficient length: {} < {}",
+            challenged_length, bet
+        );
         component.create_response(
             &ctx.http,
             CreateInteractionResponse::Message(
@@ -383,14 +391,14 @@ pub async fn handle_pvp_accept(
                             ))
                             .color(0xFF0000),
                     )
-                    .ephemeral(true), // Make this message ephemeral so only the user sees it
+                    .ephemeral(true),
             ),
         ).await?;
         return Ok(()); // Don't remove the challenge, let others accept it
     }
 
-    // Get challenger info - removed from HashMap only when successfully accepted
-    let challenge = pvp_challenges.remove(&challenge_id).unwrap();
+    // Get challenger info
+    pvp_challenges.remove(&challenge_id).unwrap();
 
     // Drop the lock before making async calls
     drop(pvp_challenges);

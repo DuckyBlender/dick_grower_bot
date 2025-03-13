@@ -49,6 +49,7 @@ pub async fn handle_grow_command(
                                     "Patience is key... especially for your little buddy.",
                                 ))
                         )
+                        .ephemeral(true)
                 );
             }
 
@@ -57,8 +58,10 @@ pub async fn handle_grow_command(
         }
         Ok(None) => {
             // New user, create a record
-            info!("New user detected, adding user {} ({}) in guild id {} to database", 
-            command.user.name, user_id, guild_id);
+            info!(
+                "New user detected, adding user {} ({}) in guild id {} to database",
+                command.user.name, user_id, guild_id
+            );
             match sqlx::query!(
                 "INSERT INTO dicks (user_id, guild_id, length, last_grow, growth_count, dick_of_day_count, 
                                    pvp_wins, pvp_losses, pvp_max_streak, pvp_current_streak,
@@ -236,55 +239,71 @@ pub async fn handle_grow_command(
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_growth_distribution() {
         // Generate many growths to get meaningful statistics
         const ITERATIONS: usize = 10000;
-        
+
         let mut positive_values = Vec::new();
         let mut negative_values = Vec::new();
-        
+
         for _ in 0..ITERATIONS {
             // This is the same code from your grow function
             let sign_ratio: f32 = 0.80; // 80% chance of positive growth
             let sign_ratio_percent = (sign_ratio * 100.0).round() as u32;
-            
+
             let is_positive = rand::rng().random_ratio(sign_ratio_percent, 100);
-            
+
             let growth = if is_positive {
                 rand::rng().random_range(1..=10) // Positive growth
             } else {
                 rand::rng().random_range(-5..=-1) // Negative growth
             };
-            
+
             if growth > 0 {
                 positive_values.push(growth);
             } else {
                 negative_values.push(growth);
             }
         }
-        
+
         // Calculate statistics
         let positive_count = positive_values.len();
         let negative_count = negative_values.len();
-        
+
         let positive_avg = positive_values.iter().sum::<i64>() as f64 / positive_count as f64;
-        let negative_avg = negative_values.iter().map(|&x| -x).sum::<i64>() as f64 / negative_count as f64;
+        let negative_avg =
+            negative_values.iter().map(|&x| -x).sum::<i64>() as f64 / negative_count as f64;
         let positive_ratio = positive_count as f64 / ITERATIONS as f64;
-        
+
         println!("Total samples: {}", ITERATIONS);
-        println!("Positive count: {}, Negative count: {}", positive_count, negative_count);
-        println!("Positive average: {:.2}, Negative average: {:.2}", positive_avg, negative_avg);
+        println!(
+            "Positive count: {}, Negative count: {}",
+            positive_count, negative_count
+        );
+        println!(
+            "Positive average: {:.2}, Negative average: {:.2}",
+            positive_avg, negative_avg
+        );
         println!("Positive ratio: {:.2} (target: 0.80)", positive_ratio);
-        
+
         // Verify distribution is approximately correct
-        assert!((positive_ratio - 0.8).abs() < 0.03, "Positive ratio should be around 0.8");
-        
+        assert!(
+            (positive_ratio - 0.8).abs() < 0.03,
+            "Positive ratio should be around 0.8"
+        );
+
         // Expected average for values 1-10 is 5.5
-        assert!((positive_avg - 5.5).abs() < 0.3, "Positive average should be around 5.5");
-        
+        assert!(
+            (positive_avg - 5.5).abs() < 0.3,
+            "Positive average should be around 5.5"
+        );
+
         // Expected average for values -5 to -1 is 3.0
-        assert!((negative_avg - 3.0).abs() < 0.3, "Negative average should be around 3.0");
+        assert!(
+            (negative_avg - 3.0).abs() < 0.3,
+            "Negative average should be around 3.0"
+        );
     }
 }
