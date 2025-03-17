@@ -268,7 +268,11 @@ pub async fn handle_gift_command(
                     .title("🎁 Gifted Centimeters!")
                     .description(format!(
                         "You gifted **{} cm** to **{}**!\n\n**Your new length**: **{} cm**\n**{}'s new length**: **{} cm**",
-                        amount, receiver, sender_length, receiver, receiver_length
+                        amount, 
+                        receiver, 
+                        sender_length, 
+                        receiver, 
+                        receiver_length + amount
                     ))
                     .color(0x3498DB) // Blue
                     .footer(CreateEmbedFooter::new("Generosity is the best policy!")),
