@@ -41,7 +41,7 @@ ENV SQLX_OFFLINE=true
 RUN cargo build --release
 
 # Runtime stage
-FROM debian:bullseye-slim
+FROM debian:bookworm-slim
 
 # Install SQLite runtime
 RUN apt update && apt install -y libsqlite3-0 ca-certificates && \
