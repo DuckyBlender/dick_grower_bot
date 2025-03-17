@@ -253,16 +253,25 @@ pub async fn handle_gift_command(
     };
 
     // Get receiver's username
-    let receiver = match UserId::new(user_id.parse::<u64>().unwrap_or_default())
+    let receiver = UserId::new(user_id.parse::<u64>().unwrap_or_default())
         .to_user(&ctx)
-        .await
-    {
-        Ok(user) => user.name,
-        Err(_) => "Unknown User".to_string(),
+        .await?;
+
+    // Funny message depending on amount
+    let footer = if amount > 100 {
+        "That's a generous gift! 🎉"
+    } else if amount > 50 {
+        "Wow, that's quite a gift! 🎁"
+    } else if amount > 10 {
+        "A nice little gift! 😊"
+    } else {
+        "A small but thoughtful gift! 💖"
     };
 
     let builder = CreateInteractionResponse::Message(
         CreateInteractionResponseMessage::new()
+            // Mention the receiver
+            .content(receiver.mention().to_string())
             .add_embed(
                 CreateEmbed::new()
                     .title("🎁 Gifted Centimeters!")
@@ -275,7 +284,7 @@ pub async fn handle_gift_command(
                         receiver_length + amount
                     ))
                     .color(0x3498DB) // Blue
-                    .footer(CreateEmbedFooter::new("Generosity is the best policy!")),
+                    .footer(CreateEmbedFooter::new(footer)),
             )
     );
     return command.create_response(&ctx.http, builder).await;

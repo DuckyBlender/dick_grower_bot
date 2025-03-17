@@ -204,6 +204,8 @@ pub async fn handle_dotd_command(
 
     let builder = CreateInteractionResponse::Message(
         CreateInteractionResponseMessage::new()
+            // mention the winner, so they get a notification
+            .content(winner_user.mention().to_string())
             .add_embed(
                 CreateEmbed::new()
                     .title("🏆 Today's Dick of the Day! 🏆")
