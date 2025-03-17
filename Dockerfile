@@ -1,5 +1,14 @@
-# Build stage
-FROM rust:slim-bullseye AS builder
+# Chef planner stage
+FROM lukemathwalker/cargo-chef:latest-rust-1 AS chef
+WORKDIR /app
+
+# Planner stage - create recipe.json for dependencies
+FROM chef AS planner
+COPY . .
+RUN cargo chef prepare --recipe-path recipe.json
+
+# Builder stage with cached dependencies
+FROM chef AS builder
 
 # Install SQLite and other dependencies for building
 RUN apt update && apt install -y libsqlite3-dev clang && \
@@ -8,10 +17,13 @@ RUN apt update && apt install -y libsqlite3-dev clang && \
 # Install SQLx CLI
 RUN cargo install sqlx-cli --no-default-features --features sqlite-unbundled,rustls
 
-# Set working directory
 WORKDIR /app
 
-# Copy your entire project
+# Build dependencies - this is the caching Docker layer!
+COPY --from=planner /app/recipe.json recipe.json
+RUN cargo chef cook --release --recipe-path recipe.json
+
+# Now copy the actual source code
 COPY . .
 
 # Create database directory
