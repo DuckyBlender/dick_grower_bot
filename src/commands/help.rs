@@ -5,9 +5,9 @@ use serenity::all::{
 use serenity::prelude::*;
 
 pub async fn handle_help_command(
-    _ctx: &Context,
-    _command: &CommandInteraction,
-) -> CreateInteractionResponse {
+    ctx: &Context,
+    command: &CommandInteraction,
+) -> Result<(), serenity::Error>  {
     let description = "\
         **🍆 Dick Grower Bot Commands:**\n\
         \n\
@@ -24,7 +24,7 @@ pub async fn handle_help_command(
         Join our Discord for announcements and other projects: [Discord Server](https://discord.gg/39nqUzYGbe)\n\
     ";
 
-    CreateInteractionResponse::Message(
+    let builder = CreateInteractionResponse::Message(
         CreateInteractionResponseMessage::new().add_embed(
             CreateEmbed::new()
                 .title("🍆 Dick Grower Bot Help")
@@ -32,5 +32,7 @@ pub async fn handle_help_command(
                 .color(0x00FF00)
                 .footer(CreateEmbedFooter::new("Compete with friends for the biggest dick in town!")),
         ),
-    )
+    );
+
+    return command.create_response(&ctx.http, builder).await;
 }

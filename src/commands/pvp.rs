@@ -19,7 +19,7 @@ pub struct PvpChallenge {
 pub async fn handle_pvp_command(
     ctx: &Context,
     command: &CommandInteraction,
-) -> CreateInteractionResponse {
+) -> Result<(), serenity::Error>  {
     let data = ctx.data.read().await;
     let bot = data.get::<Bot>().unwrap();
 
@@ -31,7 +31,7 @@ pub async fn handle_pvp_command(
 
     // Validate bet
     if bet <= 0 {
-        return CreateInteractionResponse::Message(
+        let builder = CreateInteractionResponse::Message(
             CreateInteractionResponseMessage::new()
                 .add_embed(
                     CreateEmbed::new()
@@ -41,6 +41,7 @@ pub async fn handle_pvp_command(
                 )
                 .ephemeral(true),
         );
+        return command.create_response(&ctx.http, builder).await;
     }
 
     // Check if challenger has enough length
@@ -81,7 +82,7 @@ pub async fn handle_pvp_command(
         }
         Err(why) => {
             error!("Database error: {:?}", why);
-            return CreateInteractionResponse::Message(
+            let builder = CreateInteractionResponse::Message(
                 CreateInteractionResponseMessage::new()
                     .add_embed(
                         CreateEmbed::new()
@@ -91,11 +92,12 @@ pub async fn handle_pvp_command(
                     )
                     .ephemeral(true),
             );
+            return command.create_response(&ctx.http, builder).await;
         }
     };
 
     if challenger_length < bet {
-        return CreateInteractionResponse::Message(
+        let builder = CreateInteractionResponse::Message(
             CreateInteractionResponseMessage::new()
                 .add_embed(
                     CreateEmbed::new()
@@ -108,6 +110,7 @@ pub async fn handle_pvp_command(
                 )
                 .ephemeral(true),
         );
+        return command.create_response(&ctx.http, builder).await;
     }
 
     // Create PVP challenge
@@ -154,7 +157,7 @@ pub async fn handle_pvp_command(
         "A cautious bet. Not everyone's ready to risk their precious centimeters!"
     };
 
-    CreateInteractionResponse::Message(
+    let builder = CreateInteractionResponse::Message(
         CreateInteractionResponseMessage::new()
             .add_embed(
                 CreateEmbed::new()
@@ -167,7 +170,8 @@ pub async fn handle_pvp_command(
                     .footer(CreateEmbedFooter::new("May the strongest dong win!")),
             )
             .components(components),
-    )
+    );
+    return command.create_response(&ctx.http, builder).await;
 }
 
 pub async fn handle_pvp_accept(

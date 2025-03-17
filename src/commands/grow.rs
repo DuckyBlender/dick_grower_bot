@@ -12,7 +12,7 @@ use serenity::prelude::*;
 pub async fn handle_grow_command(
     ctx: &Context,
     command: &CommandInteraction,
-) -> CreateInteractionResponse {
+) -> Result<(), serenity::Error> {
     let data = ctx.data.read().await;
     let bot = data.get::<Bot>().unwrap();
 
@@ -34,7 +34,7 @@ pub async fn handle_grow_command(
 
             let time_left = check_30_minutes(&last_grow);
             if !time_left.is_zero() {
-                return CreateInteractionResponse::Message(
+                let builder = CreateInteractionResponse::Message(
                     CreateInteractionResponseMessage::new()
                         .add_embed(
                             CreateEmbed::new()
@@ -51,6 +51,7 @@ pub async fn handle_grow_command(
                         )
                         .ephemeral(true)
                 );
+                return command.create_response(&ctx.http, builder).await;   
             }
 
             // Return user stats
@@ -84,7 +85,7 @@ pub async fn handle_grow_command(
         }
         Err(why) => {
             error!("Database error: {:?}", why);
-            return CreateInteractionResponse::Message(
+            let builder = CreateInteractionResponse::Message(
                 CreateInteractionResponseMessage::new().add_embed(
                     CreateEmbed::new()
                         .title("⚠️ Database Error")
@@ -94,6 +95,7 @@ pub async fn handle_grow_command(
                         .color(0xFF0000),
                 ),
             );
+            return command.create_response(&ctx.http, builder).await;
         }
     };
 
@@ -138,7 +140,7 @@ pub async fn handle_grow_command(
         Ok(_) => (),
         Err(why) => {
             error!("Error updating length: {:?}", why);
-            return CreateInteractionResponse::Message(
+            let builder = CreateInteractionResponse::Message(
                 CreateInteractionResponseMessage::new().add_embed(
                     CreateEmbed::new()
                         .title("⚠️ Growth Error")
@@ -146,6 +148,7 @@ pub async fn handle_grow_command(
                         .color(0xFF0000),
                 ),
             );
+            return command.create_response(&ctx.http, builder).await;
         }
     };
 
@@ -161,7 +164,7 @@ pub async fn handle_grow_command(
         Ok(record) => record.length,
         Err(why) => {
             error!("Error fetching length: {:?}", why);
-            return CreateInteractionResponse::Message(
+            let builder = CreateInteractionResponse::Message(
                 CreateInteractionResponseMessage::new().add_embed(
                     CreateEmbed::new()
                         .title("⚠️ Length Measurement Error")
@@ -171,6 +174,7 @@ pub async fn handle_grow_command(
                         .color(0xFF0000),
                 ),
             );
+            return command.create_response(&ctx.http, builder).await;
         }
     };
 
@@ -223,7 +227,7 @@ pub async fn handle_grow_command(
         )
     };
 
-    CreateInteractionResponse::Message(
+    let builder = CreateInteractionResponse::Message(
         CreateInteractionResponseMessage::new().add_embed(
             CreateEmbed::new()
                 .title(title)
@@ -233,7 +237,8 @@ pub async fn handle_grow_command(
                     "Remember: it's not about the size, it's about... actually, it is about the size.",
                 )),
         ),
-    )
+    );
+    return command.create_response(&ctx.http, builder).await;
 }
 
 #[cfg(test)]

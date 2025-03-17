@@ -10,7 +10,7 @@ use serenity::prelude::*;
 pub async fn handle_gift_command(
     ctx: &Context,
     command: &CommandInteraction,
-) -> CreateInteractionResponse {
+) -> Result<(), serenity::Error>  {
     let data = ctx.data.read().await;
     let bot = data.get::<Bot>().unwrap();
 
@@ -21,7 +21,7 @@ pub async fn handle_gift_command(
     let user_option = match options.iter().find(|o| o.name == "user") {
         Some(option) => option,
         None => {
-            return CreateInteractionResponse::Message(
+            let builder = CreateInteractionResponse::Message(
                 CreateInteractionResponseMessage::new()
                     .add_embed(
                         CreateEmbed::new()
@@ -31,13 +31,14 @@ pub async fn handle_gift_command(
                     )
                     .ephemeral(true),
             );
+            return command.create_response(&ctx.http, builder).await;
         }
     };
 
     let amount_option = match options.iter().find(|o| o.name == "amount") {
         Some(option) => option,
         None => {
-            return CreateInteractionResponse::Message(
+            let builder = CreateInteractionResponse::Message(
                 CreateInteractionResponseMessage::new()
                     .add_embed(
                         CreateEmbed::new()
@@ -47,6 +48,7 @@ pub async fn handle_gift_command(
                     )
                     .ephemeral(true),
             );
+            return command.create_response(&ctx.http, builder).await;
         }
     };
 
@@ -54,7 +56,7 @@ pub async fn handle_gift_command(
     let user_id = match user_option.value.as_user_id() {
         Some(id) => id.to_string(),
         None => {
-            return CreateInteractionResponse::Message(
+            let builder = CreateInteractionResponse::Message(
                 CreateInteractionResponseMessage::new()
                     .add_embed(
                         CreateEmbed::new()
@@ -64,13 +66,14 @@ pub async fn handle_gift_command(
                     )
                     .ephemeral(true),
             );
+            return command.create_response(&ctx.http, builder).await;
         }
     };
 
     let amount = match amount_option.value.as_i64() {
         Some(val) => val,
         None => {
-            return CreateInteractionResponse::Message(
+            let builder = CreateInteractionResponse::Message(
                 CreateInteractionResponseMessage::new()
                     .add_embed(
                         CreateEmbed::new()
@@ -80,12 +83,13 @@ pub async fn handle_gift_command(
                     )
                     .ephemeral(true),
             );
+            return command.create_response(&ctx.http, builder).await;
         }
     };
 
     // Check if the amount is valid, should be verified by discord but never trust front end input
     if amount < 1 {
-        return CreateInteractionResponse::Message(
+        let builder = CreateInteractionResponse::Message(
             CreateInteractionResponseMessage::new()
                 .add_embed(
                     CreateEmbed::new()
@@ -95,6 +99,7 @@ pub async fn handle_gift_command(
                 )
                 .ephemeral(true),
         );
+        return command.create_response(&ctx.http, builder).await;
     }
 
     let guild_id = command.guild_id.unwrap().to_string();
@@ -136,7 +141,7 @@ pub async fn handle_gift_command(
         }
         Err(why) => {
             error!("Database error: {:?}", why);
-            return CreateInteractionResponse::Message(
+            let builder = CreateInteractionResponse::Message(
                 CreateInteractionResponseMessage::new()
                     .add_embed(
                         CreateEmbed::new()
@@ -146,11 +151,12 @@ pub async fn handle_gift_command(
                     )
                     .ephemeral(true),
             );
+            return command.create_response(&ctx.http, builder).await;
         }
     };
 
     if sender_length < amount {
-        return CreateInteractionResponse::Message(
+        let builder = CreateInteractionResponse::Message(
             CreateInteractionResponseMessage::new()
                 .add_embed(
                     CreateEmbed::new()
@@ -163,6 +169,7 @@ pub async fn handle_gift_command(
                 )
                 .ephemeral(true),
         );
+        return command.create_response(&ctx.http, builder).await;
     }
 
     // Update the database for the sender
@@ -178,7 +185,7 @@ pub async fn handle_gift_command(
         Ok(_) => (),
         Err(why) => {
             error!("Error updating sender: {:?}", why);
-            return CreateInteractionResponse::Message(
+            let builder = CreateInteractionResponse::Message(
                 CreateInteractionResponseMessage::new()
                     .add_embed(
                         CreateEmbed::new()
@@ -188,6 +195,7 @@ pub async fn handle_gift_command(
                     )
                     .ephemeral(true),
             );
+            return command.create_response(&ctx.http, builder).await;
         }
     };
 
@@ -204,7 +212,7 @@ pub async fn handle_gift_command(
         Ok(_) => (),
         Err(why) => {
             error!("Error updating receiver: {:?}", why);
-            return CreateInteractionResponse::Message(
+            let builder = CreateInteractionResponse::Message(
                 CreateInteractionResponseMessage::new()
                     .add_embed(
                         CreateEmbed::new()
@@ -214,6 +222,7 @@ pub async fn handle_gift_command(
                     )
                     .ephemeral(true),
             );
+            return command.create_response(&ctx.http, builder).await;
         }
     };
 
@@ -252,7 +261,7 @@ pub async fn handle_gift_command(
         Err(_) => "Unknown User".to_string(),
     };
 
-    CreateInteractionResponse::Message(
+    let builder = CreateInteractionResponse::Message(
         CreateInteractionResponseMessage::new()
             .add_embed(
                 CreateEmbed::new()
@@ -265,5 +274,6 @@ pub async fn handle_gift_command(
                     .footer(CreateEmbedFooter::new("Generosity is the best policy!")),
             )
             .ephemeral(true),
-    )
+    );
+    return command.create_response(&ctx.http, builder).await;
 }

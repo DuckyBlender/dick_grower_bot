@@ -10,7 +10,7 @@ use serenity::prelude::*;
 pub async fn handle_top_command(
     ctx: &Context,
     command: &CommandInteraction,
-) -> CreateInteractionResponse {
+) -> Result<(), serenity::Error>  {
     let data = ctx.data.read().await;
     let bot = data.get::<Bot>().unwrap();
 
@@ -29,7 +29,7 @@ pub async fn handle_top_command(
         Ok(users) => users,
         Err(why) => {
             error!("Error fetching top users: {:?}", why);
-            return CreateInteractionResponse::Message(
+            let builder = CreateInteractionResponse::Message(
                 CreateInteractionResponseMessage::new().add_embed(
                     CreateEmbed::new()
                         .title("⚠️ Leaderboard Error")
@@ -39,11 +39,12 @@ pub async fn handle_top_command(
                         .color(0xFF0000),
                 ),
             );
+            return command.create_response(&ctx.http, builder).await;
         }
     };
 
     if top_users.is_empty() {
-        return CreateInteractionResponse::Message(
+        let builder = CreateInteractionResponse::Message(
             CreateInteractionResponseMessage::new().add_embed(
                 CreateEmbed::new()
                     .title("👀 No Dicks Found")
@@ -53,6 +54,7 @@ pub async fn handle_top_command(
                     .color(0xAAAAAA),
             ),
         );
+        return command.create_response(&ctx.http, builder).await;
     }
 
     // Build the leaderboard
@@ -140,7 +142,7 @@ pub async fn handle_top_command(
         Err(_) => "This Server".to_string(),
     };
 
-    CreateInteractionResponse::Message(
+    let builder = CreateInteractionResponse::Message(
         CreateInteractionResponseMessage::new().add_embed(
             CreateEmbed::new()
                 .title(format!("🍆 Dick Leaderboard: {} 🏆", guild_name))
@@ -150,5 +152,6 @@ pub async fn handle_top_command(
                     "Use /grow daily to increase your length!",
                 )),
         ),
-    )
+    );
+    return command.create_response(&ctx.http, builder).await;
 }

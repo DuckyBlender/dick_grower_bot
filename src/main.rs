@@ -76,9 +76,9 @@ impl EventHandler for Handler {
                     command.guild_id.unwrap_or_default()
                 );
 
-                // Check if interaction is in a guild
+                // Execute the command directly
                 let now = Instant::now();
-                let content = match command.data.name.as_str() {
+                let result = match command.data.name.as_str() {
                     "grow" => handle_grow_command(&ctx, &command).await,
                     "top" => handle_top_command(&ctx, &command).await,
                     "global" => handle_global_command(&ctx, &command).await,
@@ -87,15 +87,18 @@ impl EventHandler for Handler {
                     "stats" => handle_stats_command(&ctx, &command).await,
                     "dickoftheday" => handle_dotd_command(&ctx, &command).await,
                     "help" => handle_help_command(&ctx, &command).await,
-                    _ => CreateInteractionResponse::Message(
-                        CreateInteractionResponseMessage::new()
-                            .content("Not implemented")
-                            .ephemeral(true),
-                    ),
+                    _ => {
+                        // For unimplemented commands, respond directly here
+                        command.create_response(&ctx.http, CreateInteractionResponse::Message(
+                            CreateInteractionResponseMessage::new()
+                                .content("Not implemented")
+                                .ephemeral(true),
+                        )).await
+                    },
                 };
 
-                if let Err(why) = command.create_response(&ctx.http, content).await {
-                    error!("Cannot respond to slash command: {}", why);
+                if let Err(why) = result {
+                    error!("Error executing command {}: {}", command.data.name, why);
                 }
                 
                 let elapsed = now.elapsed();

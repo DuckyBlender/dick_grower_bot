@@ -13,7 +13,7 @@ use serenity::prelude::*;
 pub async fn handle_dotd_command(
     ctx: &Context,
     command: &CommandInteraction,
-) -> CreateInteractionResponse {
+) -> Result<(), serenity::Error>  {
     let data = ctx.data.read().await;
     let bot = data.get::<Bot>().unwrap();
 
@@ -34,7 +34,7 @@ pub async fn handle_dotd_command(
             // Check if this is a new UTC day
             let time_left = check_utc_day_reset(&last_dotd);
             if !time_left.is_zero() {
-                return CreateInteractionResponse::Message(
+                let builder = CreateInteractionResponse::Message(
                     CreateInteractionResponseMessage::new()
                         .add_embed(
                             CreateEmbed::new()
@@ -47,6 +47,7 @@ pub async fn handle_dotd_command(
                                 .color(0xFF5733)
                         )
                 );
+                return command.create_response(&ctx.http, builder).await;
             }
 
             // If we reach here, it's a new day and we can proceed
@@ -69,7 +70,7 @@ pub async fn handle_dotd_command(
         }
         Err(why) => {
             error!("Database error: {:?}", why);
-            return CreateInteractionResponse::Message(
+            let builder = CreateInteractionResponse::Message(
                 CreateInteractionResponseMessage::new().add_embed(
                     CreateEmbed::new()
                         .title("⚠️ Database Error")
@@ -77,6 +78,7 @@ pub async fn handle_dotd_command(
                         .color(0xFF0000),
                 ),
             );
+            return command.create_response(&ctx.http, builder).await;
         }
     };
     // Get active users in the guild
@@ -92,7 +94,7 @@ pub async fn handle_dotd_command(
         Ok(users) => users,
         Err(why) => {
             error!("Error fetching active users: {:?}", why);
-            return CreateInteractionResponse::Message(
+            let builder = CreateInteractionResponse::Message(
                 CreateInteractionResponseMessage::new()
                     .add_embed(
                         CreateEmbed::new()
@@ -101,12 +103,13 @@ pub async fn handle_dotd_command(
                             .color(0xAAAAAA)
                     )
             );
+            return command.create_response(&ctx.http, builder).await;
         }
     };
 
     // Get active users count
     if active_users.len() < 2 {
-        return CreateInteractionResponse::Message(
+        let builder = CreateInteractionResponse::Message(
             CreateInteractionResponseMessage::new()
                 .add_embed(
                     CreateEmbed::new()
@@ -115,6 +118,7 @@ pub async fn handle_dotd_command(
                         .color(0xAAAAAA)
                 )
         );
+        return command.create_response(&ctx.http, builder).await;
     }
 
     // Select a random winner
@@ -138,7 +142,7 @@ pub async fn handle_dotd_command(
         Ok(_) => (),
         Err(why) => {
             error!("Error updating winner: {:?}", why);
-            return CreateInteractionResponse::Message(
+            let builder = CreateInteractionResponse::Message(
                 CreateInteractionResponseMessage::new().add_embed(
                     CreateEmbed::new()
                         .title("⚠️ Database Error")
@@ -146,6 +150,7 @@ pub async fn handle_dotd_command(
                         .color(0xFF0000),
                 ),
             );
+            return command.create_response(&ctx.http, builder).await;
         }
     };
 
@@ -172,7 +177,7 @@ pub async fn handle_dotd_command(
         Ok(user) => user,
         Err(why) => {
             error!("Error fetching user: {:?}", why);
-            return CreateInteractionResponse::Message(
+            let builder = CreateInteractionResponse::Message(
                 CreateInteractionResponseMessage::new().add_embed(
                     CreateEmbed::new()
                         .title("⚠️ User Fetch Error")
@@ -180,6 +185,7 @@ pub async fn handle_dotd_command(
                         .color(0xFF0000),
                 ),
             );
+            return command.create_response(&ctx.http, builder).await;
         }
     };
 
@@ -196,7 +202,7 @@ pub async fn handle_dotd_command(
         "GOD OF SCHLONGS"
     };
 
-    CreateInteractionResponse::Message(
+    let builder = CreateInteractionResponse::Message(
         CreateInteractionResponseMessage::new()
             .add_embed(
                 CreateEmbed::new()
@@ -209,5 +215,6 @@ pub async fn handle_dotd_command(
                     .thumbnail(winner_user.face())
                     .footer(CreateEmbedFooter::new("Stay tuned for tomorrow's competition!"))
             )
-    )
+    );
+    return command.create_response(&ctx.http, builder).await;
 }

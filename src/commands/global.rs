@@ -1,8 +1,7 @@
 use crate::Bot;
 use log::error;
 use serenity::all::{
-    CommandInteraction, CreateEmbed, CreateEmbedFooter, CreateInteractionResponse,
-    CreateInteractionResponseMessage,
+    CommandInteraction, CreateEmbed, CreateEmbedFooter, CreateInteractionResponseFollowup
 };
 use serenity::model::id::UserId;
 use serenity::prelude::*;
@@ -10,13 +9,13 @@ use serenity::prelude::*;
 pub async fn handle_global_command(
     ctx: &Context,
     command: &CommandInteraction,
-) -> CreateInteractionResponse {
+) -> Result<(), serenity::Error> {
     let data = ctx.data.read().await;
     let bot = data.get::<Bot>().unwrap();
 
     // Defer the command to avoid timeout
     // This is important for commands that take a while to process
-    command.defer(&ctx.http).await.unwrap();
+    command.defer(&ctx.http).await?;
 
     // Get top 10 users globally
     let top_users = match sqlx::query!(
@@ -29,8 +28,8 @@ pub async fn handle_global_command(
         Ok(users) => users,
         Err(why) => {
             error!("Error fetching global top users: {:?}", why);
-            return CreateInteractionResponse::Message(
-                CreateInteractionResponseMessage::new().add_embed(
+            command.create_followup(&ctx.http, 
+                CreateInteractionResponseFollowup::new().add_embed(
                     CreateEmbed::new()
                         .title("⚠️ Global Leaderboard Error")
                         .description(
@@ -38,13 +37,14 @@ pub async fn handle_global_command(
                         )
                         .color(0xFF0000),
                 ),
-            );
+            ).await?;
+            return Ok(());
         }
     };
 
     if top_users.is_empty() {
-        return CreateInteractionResponse::Message(
-            CreateInteractionResponseMessage::new().add_embed(
+        command.create_followup(&ctx.http,
+            CreateInteractionResponseFollowup::new().add_embed(
                 CreateEmbed::new()
                     .title("👀 No Dicks Found")
                     .description(
@@ -52,7 +52,8 @@ pub async fn handle_global_command(
                     )
                     .color(0xAAAAAA),
             ),
-        );
+        ).await?;
+        return Ok(());
     }
 
     // Build the global leaderboard
@@ -148,15 +149,17 @@ pub async fn handle_global_command(
         description.push_str(&format!("\n\n{}", winner_comment));
     }
 
-    CreateInteractionResponse::Message(
-        CreateInteractionResponseMessage::new().add_embed(
+    command.create_followup(&ctx.http,
+        CreateInteractionResponseFollowup::new().add_embed(
             CreateEmbed::new()
                 .title("🌍 Global Dick Leaderboard 🏆")
                 .description(description)
                 .color(0x9B59B6) // Purple
                 .footer(CreateEmbedFooter::new(
-                    "World domination starts with your dick. Use /grow daily!",
+                    "World domination starts with your dick. /grow every day!",
                 )),
         ),
-    )
+    ).await?;
+    
+    Ok(())
 }

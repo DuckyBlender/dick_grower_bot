@@ -11,7 +11,7 @@ use serenity::prelude::*;
 pub async fn handle_stats_command(
     ctx: &Context,
     command: &CommandInteraction,
-) -> CreateInteractionResponse {
+) -> Result<(), serenity::Error>  {
     let data = ctx.data.read().await;
     let bot = data.get::<Bot>().unwrap();
 
@@ -58,20 +58,21 @@ pub async fn handle_stats_command(
                 "This user hasn't started growing their dick yet!"
             };
 
-            return CreateInteractionResponse::Message(
+            let builder = CreateInteractionResponse::Message(
                 CreateInteractionResponseMessage::new()
-                    .add_embed(
-                        CreateEmbed::new()
-                            .title("❓ No Stats Found")
-                            .description(msg)
-                            .color(0xAAAAAA),
-                    )
-                    .ephemeral(true),
+                .add_embed(
+                    CreateEmbed::new()
+                    .title("❓ No Stats Found")
+                    .description(msg)
+                    .color(0xAAAAAA),
+                )
+                .ephemeral(true),
             );
+            return command.create_response(&ctx.http, builder).await
         }
         Err(why) => {
             error!("Database error: {:?}", why);
-            return CreateInteractionResponse::Message(
+            let builder = CreateInteractionResponse::Message(
                 CreateInteractionResponseMessage::new()
                     .add_embed(
                         CreateEmbed::new()
@@ -81,6 +82,7 @@ pub async fn handle_stats_command(
                     )
                     .ephemeral(true),
             );
+            return command.create_response(&ctx.http, builder).await
         }
     };
 
@@ -170,7 +172,7 @@ pub async fn handle_stats_command(
         "Use /stats without parameters to see your own stats!"
     };
 
-    CreateInteractionResponse::Message(
+    let builder = CreateInteractionResponse::Message(
         CreateInteractionResponseMessage::new()
             .add_embed(
                 CreateEmbed::new()
@@ -204,5 +206,6 @@ pub async fn handle_stats_command(
                     .footer(CreateEmbedFooter::new(footer_text)),
             )
             .ephemeral(true),
-    )
+    );
+    command.create_response(&ctx.http, builder).await
 }
