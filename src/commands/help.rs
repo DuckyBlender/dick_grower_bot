@@ -8,52 +8,29 @@ pub async fn handle_help_command(
     _ctx: &Context,
     _command: &CommandInteraction,
 ) -> CreateInteractionResponse {
+    let description = "\
+        **🍆 Dick Grower Bot Commands:**\n\
+        \n\
+        `/grow` - Grow your dick once per day\n\
+        `/top` - View the server's dick leaderboard\n\
+        `/global` - View the global dick leaderboard\n\
+        `/pvp <bet>` - Challenge someone to a dick battle with a cm bet\n\
+        `/gift <user> <amount>` - Gift some cm to another user\n\
+        `/stats [user]` - View your or someone else's dick stats\n\
+        `/dickoftheday` - Select a random Dick of the Day\n\
+        `/help` - Show this help message\n\
+        \n\
+        **🔔 Bot Updates & Community:**\n\
+        Join our Discord for announcements and other projects: [Discord Server](https://discord.gg/39nqUzYGbe)\n\
+    ";
+
     CreateInteractionResponse::Message(
-        CreateInteractionResponseMessage::new()
-            .add_embed(
-                CreateEmbed::new()
-                    .title("🍆 Cucumber Bot Help Guide 🍆")
-                    .description(
-                        "Welcome to the Cucumber Bot - where size matters and every day is a new opportunity to grow! Below you'll find information about all the available commands:"
-                    )
-                    .color(0x9B59B6) // Purple
-                    .field(
-                        "/grow", 
-                        "Grow your cucumber once per day. Your length can increase or decrease randomly (-5 to +10 cm). First 7 growths are guaranteed to be positive.", 
-                        false
-                    )
-                    .field(
-                        "/top", 
-                        "Shows the leaderboard of the biggest dicks in the current server.", 
-                        false
-                    )
-                    .field(
-                        "/global", 
-                        "Shows the leaderboard of the biggest dicks across all servers where the bot is used.", 
-                        false
-                    )
-                    .field(
-                        "/pvp", 
-                        "Start a dick battle with someone. Enter the amount of centimeters you want to bet. If you win, you gain that length from your opponent. If you lose, you lose that length to them.", 
-                        false
-                    )
-                    .field(
-                        "/stats", 
-                        "View your dick stats including length, rank, win/loss record, and more.", 
-                        false
-                    )
-                    .field(
-                        "/dickoftheday", 
-                        "Randomly selects one active user to be the Dick of the Day, granting them a bonus of 5-10 cm.", 
-                        false
-                    )
-                    .field(
-                        "Cooldowns", 
-                        "The `/grow` command has a 30 minute cooldown. The `/dickoftheday` command can be executed once per day and refreshes every 00:00 UTC.",
-                        false
-                    )
-                    .footer(CreateEmbedFooter::new("May your cucumber grow long and prosperous! 🥒")),
-            )
-            .ephemeral(true),
+        CreateInteractionResponseMessage::new().add_embed(
+            CreateEmbed::new()
+                .title("🍆 Dick Grower Bot Help")
+                .description(description)
+                .color(0x00FF00)
+                .footer(CreateEmbedFooter::new("Compete with friends for the biggest dick in town!")),
+        ),
     )
 }

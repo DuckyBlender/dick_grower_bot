@@ -9,15 +9,19 @@ use serenity::prelude::*;
 
 pub async fn handle_global_command(
     ctx: &Context,
-    _: &CommandInteraction,
+    command: &CommandInteraction,
 ) -> CreateInteractionResponse {
     let data = ctx.data.read().await;
     let bot = data.get::<Bot>().unwrap();
 
+    // Defer the command to avoid timeout
+    // This is important for commands that take a while to process
+    command.defer(&ctx.http).await.unwrap();
+
     // Get top 10 users globally
     let top_users = match sqlx::query!(
         "SELECT user_id, length, guild_id FROM dicks 
-         ORDER BY length DESC LIMIT 10"
+         ORDER BY length DESC LIMIT 5"
     )
     .fetch_all(&bot.database)
     .await

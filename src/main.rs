@@ -97,6 +97,7 @@ impl EventHandler for Handler {
                 if let Err(why) = command.create_response(&ctx.http, content).await {
                     error!("Cannot respond to slash command: {}", why);
                 }
+                
                 let elapsed = now.elapsed();
                 info!(
                     "Command /{} executed in {} ms",
