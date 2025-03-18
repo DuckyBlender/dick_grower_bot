@@ -1,4 +1,5 @@
 use crate::Bot;
+use chrono::Duration;
 use log::{error, info};
 use rand::Rng;
 use serenity::all::{
@@ -238,7 +239,9 @@ pub async fn handle_pvp_accept(
         .unwrap()
         .as_secs();
 
-    if current_time - challenge.created_at > 3600 {
+    if current_time - challenge.created_at > Duration::hours(24).num_seconds() as u64 {
+        info!("Challenge expired: {}", challenge_id);
+
         // Remove expired challenge
         pvp_challenges.remove(&challenge_id);
 
@@ -251,7 +254,7 @@ pub async fn handle_pvp_accept(
                             CreateEmbed::new()
                                 .title("⏰ Challenge Expired")
                                 .description(
-                                    "This challenge has expired. You took too long to accept!",
+                                    "This challenge has expired after 24h. You took too long to accept!",
                                 )
                                 .color(0xAAAAAA),
                         )
