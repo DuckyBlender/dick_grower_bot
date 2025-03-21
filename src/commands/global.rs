@@ -56,6 +56,34 @@ pub async fn handle_global_command(
         return Ok(());
     }
 
+    // Fetch server count
+    let server_count = match sqlx::query!(
+        "SELECT COUNT(DISTINCT guild_id) as count FROM dicks"
+    )
+    .fetch_one(&bot.database)
+    .await
+    {
+        Ok(result) => result.count,
+        Err(why) => {
+            error!("Error fetching server count: {:?}", why);
+            0
+        }
+    };
+
+    // Fetch total dick count
+    let dick_count = match sqlx::query!(
+        "SELECT COUNT(*) as count FROM dicks"
+    )
+    .fetch_one(&bot.database)
+    .await
+    {
+        Ok(result) => result.count,
+        Err(why) => {
+            error!("Error fetching total dick count: {:?}", why);
+            0
+        }
+    };
+
     // Build the global leaderboard
     let mut description = "Here are the biggest dicks in the entire world:\n\n".to_string();
 
@@ -156,7 +184,8 @@ pub async fn handle_global_command(
                 .description(description)
                 .color(0x9B59B6) // Purple
                 .footer(CreateEmbedFooter::new(
-                    "World domination starts with your dick. /grow every day!",
+                    format!("🌐 {} servers | 🍆 {} total dicks | World domination starts with your dick. /grow every day!", 
+                        server_count, dick_count)
                 )),
         ),
     ).await?;

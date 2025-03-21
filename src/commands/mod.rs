@@ -1,5 +1,4 @@
 pub mod dotd;
-pub mod gift;
 pub mod global;
 pub mod grow;
 pub mod help;
@@ -9,7 +8,6 @@ pub mod top;
 
 // Re-export all command handlers
 pub use dotd::handle_dotd_command;
-pub use gift::handle_gift_command;
 pub use global::handle_global_command;
 pub use grow::handle_grow_command;
 pub use help::handle_help_command;

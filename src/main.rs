@@ -83,7 +83,6 @@ impl EventHandler for Handler {
                     "top" => handle_top_command(&ctx, &command).await,
                     "global" => handle_global_command(&ctx, &command).await,
                     "pvp" => handle_pvp_command(&ctx, &command).await,
-                    "gift" => handle_gift_command(&ctx, &command).await,
                     "stats" => handle_stats_command(&ctx, &command).await,
                     "dickoftheday" => handle_dotd_command(&ctx, &command).await,
                     "help" => handle_help_command(&ctx, &command).await,
