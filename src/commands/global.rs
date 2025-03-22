@@ -118,23 +118,10 @@ pub async fn handle_global_command(
             Err(_) => "unknown server".to_string(),
         };
 
-        let emoji = if i == 0 {
-            "🌎 "
-        } else if user.length <= 0 {
-            "🥜 "
-        } else if user.length > 50 {
-            "🚀 "
-        } else if user.length > 30 {
-            "🌵 "
-        } else {
-            "🍆 "
-        };
-
         description.push_str(&format!(
-            "{} **{}. {}{}**: {} cm (from {})\n",
+            "{} **{}. {}**: {} cm (from {})\n",
             medal,
             i + 1,
-            emoji,
             username,
             user.length,
             guild_name

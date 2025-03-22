@@ -9,13 +9,10 @@ pub async fn handle_help_command(
     command: &CommandInteraction,
 ) -> Result<(), serenity::Error>  {
     let description = "\
-        **🍆 Dick Grower Bot Commands:**\n\
-        \n\
         `/grow` - Grow your dick once per day\n\
         `/top` - View the server's dick leaderboard\n\
         `/global` - View the global dick leaderboard\n\
         `/pvp <bet>` - Challenge someone to a dick battle with a cm bet\n\
-        `/gift <user> <amount>` - Gift some cm to another user\n\
         `/stats [user]` - View your or someone else's dick stats\n\
         `/dickoftheday` - Select a random Dick of the Day\n\
         `/help` - Show this help message\n\
