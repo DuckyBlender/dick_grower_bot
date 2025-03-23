@@ -88,18 +88,23 @@ impl EventHandler for Handler {
                     "help" => handle_help_command(&ctx, &command).await,
                     _ => {
                         // For unimplemented commands, respond directly here
-                        command.create_response(&ctx.http, CreateInteractionResponse::Message(
-                            CreateInteractionResponseMessage::new()
-                                .content("Not implemented")
-                                .ephemeral(true),
-                        )).await
-                    },
+                        command
+                            .create_response(
+                                &ctx.http,
+                                CreateInteractionResponse::Message(
+                                    CreateInteractionResponseMessage::new()
+                                        .content("Not implemented")
+                                        .ephemeral(true),
+                                ),
+                            )
+                            .await
+                    }
                 };
 
                 if let Err(why) = result {
                     error!("Error executing command {}: {}", command.data.name, why);
                 }
-                
+
                 let elapsed = now.elapsed();
                 info!(
                     "Command /{} executed in {} ms",

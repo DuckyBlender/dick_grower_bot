@@ -51,7 +51,7 @@ pub async fn handle_grow_command(
                         )
                         .ephemeral(true)
                 );
-                return command.create_response(&ctx.http, builder).await;   
+                return command.create_response(&ctx.http, builder).await;
             }
 
             // Return user stats

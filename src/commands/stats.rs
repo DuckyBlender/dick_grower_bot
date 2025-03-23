@@ -11,7 +11,7 @@ use serenity::prelude::*;
 pub async fn handle_stats_command(
     ctx: &Context,
     command: &CommandInteraction,
-) -> Result<(), serenity::Error>  {
+) -> Result<(), serenity::Error> {
     let data = ctx.data.read().await;
     let bot = data.get::<Bot>().unwrap();
 
@@ -60,15 +60,15 @@ pub async fn handle_stats_command(
 
             let builder = CreateInteractionResponse::Message(
                 CreateInteractionResponseMessage::new()
-                .add_embed(
-                    CreateEmbed::new()
-                    .title("❓ No Stats Found")
-                    .description(msg)
-                    .color(0xAAAAAA),
-                )
-                .ephemeral(true),
+                    .add_embed(
+                        CreateEmbed::new()
+                            .title("❓ No Stats Found")
+                            .description(msg)
+                            .color(0xAAAAAA),
+                    )
+                    .ephemeral(true),
             );
-            return command.create_response(&ctx.http, builder).await
+            return command.create_response(&ctx.http, builder).await;
         }
         Err(why) => {
             error!("Database error: {:?}", why);
@@ -82,7 +82,7 @@ pub async fn handle_stats_command(
                     )
                     .ephemeral(true),
             );
-            return command.create_response(&ctx.http, builder).await
+            return command.create_response(&ctx.http, builder).await;
         }
     };
 
@@ -143,13 +143,13 @@ pub async fn handle_stats_command(
         } else {
             "Their dick is practically an innie at this point. Tragic!"
         }
-    } else if user_stats.length < 10 {
-        "It's... cute? At least that's what they'll say to be nice."
-    } else if user_stats.length < 20 {
-        "Not bad! In the average zone. But who wants to be average?"
-    } else if user_stats.length < 30 {
-        "Impressive length! That's some serious heat down there."
     } else if user_stats.length < 50 {
+        "It's... cute? At least that's what they'll say to be nice."
+    } else if user_stats.length < 100 {
+        "Not bad! In the average zone. But who wants to be average?"
+    } else if user_stats.length < 150 {
+        "Impressive length! That's some serious heat down there."
+    } else if user_stats.length < 200 {
         "WOW! That's a third leg, not a dick! Special pants required?"
     } else {
         "LEGENDARY! Scientists want to study this mutation. BEWARE!"

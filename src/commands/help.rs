@@ -7,7 +7,7 @@ use serenity::prelude::*;
 pub async fn handle_help_command(
     ctx: &Context,
     command: &CommandInteraction,
-) -> Result<(), serenity::Error>  {
+) -> Result<(), serenity::Error> {
     let description = "\
         `/grow` - Grow your dick once per day\n\
         `/top` - View the server's dick leaderboard\n\
@@ -27,7 +27,9 @@ pub async fn handle_help_command(
                 .title("🍆 Dick Grower Bot Help")
                 .description(description)
                 .color(0x00FF00)
-                .footer(CreateEmbedFooter::new("Compete with friends for the biggest dick in town!")),
+                .footer(CreateEmbedFooter::new(
+                    "Compete with friends for the biggest dick in town!",
+                )),
         ),
     );
 

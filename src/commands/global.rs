@@ -1,7 +1,8 @@
 use crate::Bot;
 use log::error;
+use rand::seq::IndexedRandom;
 use serenity::all::{
-    CommandInteraction, CreateEmbed, CreateEmbedFooter, CreateInteractionResponseFollowup
+    CommandInteraction, CreateEmbed, CreateEmbedFooter, CreateInteractionResponseFollowup,
 };
 use serenity::model::id::UserId;
 use serenity::prelude::*;
@@ -28,7 +29,7 @@ pub async fn handle_global_command(
         Ok(users) => users,
         Err(why) => {
             error!("Error fetching global top users: {:?}", why);
-            command.create_followup(&ctx.http, 
+            command.create_followup(&ctx.http,
                 CreateInteractionResponseFollowup::new().add_embed(
                     CreateEmbed::new()
                         .title("⚠️ Global Leaderboard Error")
@@ -43,25 +44,26 @@ pub async fn handle_global_command(
     };
 
     if top_users.is_empty() {
-        command.create_followup(&ctx.http,
-            CreateInteractionResponseFollowup::new().add_embed(
-                CreateEmbed::new()
-                    .title("👀 No Dicks Found")
-                    .description(
-                        "Nobody has grown their dick anywhere yet. The world awaits a pioneer!",
-                    )
-                    .color(0xAAAAAA),
-            ),
-        ).await?;
+        command
+            .create_followup(
+                &ctx.http,
+                CreateInteractionResponseFollowup::new().add_embed(
+                    CreateEmbed::new()
+                        .title("👀 No Dicks Found")
+                        .description(
+                            "Nobody has grown their dick anywhere yet. The world awaits a pioneer!",
+                        )
+                        .color(0xAAAAAA),
+                ),
+            )
+            .await?;
         return Ok(());
     }
 
     // Fetch server count
-    let server_count = match sqlx::query!(
-        "SELECT COUNT(DISTINCT guild_id) as count FROM dicks"
-    )
-    .fetch_one(&bot.database)
-    .await
+    let server_count = match sqlx::query!("SELECT COUNT(DISTINCT guild_id) as count FROM dicks")
+        .fetch_one(&bot.database)
+        .await
     {
         Ok(result) => result.count,
         Err(why) => {
@@ -71,11 +73,9 @@ pub async fn handle_global_command(
     };
 
     // Fetch total dick count
-    let dick_count = match sqlx::query!(
-        "SELECT COUNT(*) as count FROM dicks"
-    )
-    .fetch_one(&bot.database)
-    .await
+    let dick_count = match sqlx::query!("SELECT COUNT(*) as count FROM dicks")
+        .fetch_one(&bot.database)
+        .await
     {
         Ok(result) => result.count,
         Err(why) => {
@@ -138,28 +138,24 @@ pub async fn handle_global_command(
             Err(_) => "Unknown User".to_string(),
         };
 
-        let length = top_users[0].length;
-        let winner_comment = if length > 60 {
+        let comments = [
             format!(
                 "NASA wants to study {}'s dick as a possible space elevator!",
                 winner_name
-            )
-        } else if length > 40 {
+            ),
             format!(
                 "{} must need a special permit to carry that thing around!",
                 winner_name
-            )
-        } else if length > 20 {
+            ),
             format!(
                 "{} is making the rest of the world feel inadequate!",
                 winner_name
-            )
-        } else {
-            format!(
-                "{} is the global champion... though the bar seems pretty low, honestly.",
-                winner_name
-            )
-        };
+            ),
+            format!("{} is the global champion...", winner_name),
+        ];
+
+        // Select random comment
+        let winner_comment = comments.choose(&mut rand::rng()).unwrap();
 
         description.push_str(&format!("\n\n{}", winner_comment));
     }
@@ -176,6 +172,6 @@ pub async fn handle_global_command(
                 )),
         ),
     ).await?;
-    
+
     Ok(())
 }

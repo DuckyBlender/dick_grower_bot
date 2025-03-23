@@ -10,7 +10,7 @@ use serenity::prelude::*;
 pub async fn handle_top_command(
     ctx: &Context,
     command: &CommandInteraction,
-) -> Result<(), serenity::Error>  {
+) -> Result<(), serenity::Error> {
     let data = ctx.data.read().await;
     let bot = data.get::<Bot>().unwrap();
 
