@@ -2,3 +2,7 @@
 .env
 *.sqlite*
 *.db*
+.venv
+*.txt
+*.html
+*.csv
