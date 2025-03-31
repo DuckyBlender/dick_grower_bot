@@ -21,7 +21,7 @@ pub async fn handle_global_command(
     // Get top 10 users globally
     let top_users = match sqlx::query!(
         "SELECT user_id, length, guild_id FROM dicks 
-         ORDER BY length DESC LIMIT 5"
+         ORDER BY length DESC LIMIT 10"
     )
     .fetch_all(&bot.database)
     .await
