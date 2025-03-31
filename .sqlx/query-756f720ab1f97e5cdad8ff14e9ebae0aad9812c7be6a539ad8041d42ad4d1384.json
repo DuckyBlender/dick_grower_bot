@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT user_id, length, guild_id FROM dicks \n         ORDER BY length DESC LIMIT 5",
+  "query": "SELECT user_id, length, guild_id FROM dicks \n         ORDER BY length DESC LIMIT 10",
   "describe": {
     "columns": [
       {
@@ -28,5 +28,5 @@
       false
     ]
   },
-  "hash": "34c6434ac1cfad42381664c5c50e91804d68d19b7d9e11ed47d7b9801354c435"
+  "hash": "756f720ab1f97e5cdad8ff14e9ebae0aad9812c7be6a539ad8041d42ad4d1384"
 }
