@@ -4,16 +4,16 @@ CREATE TABLE IF NOT EXISTS dicks (
     id SERIAL PRIMARY KEY,
     user_id TEXT NOT NULL,
     guild_id TEXT NOT NULL,
-    length BIGINT NOT NULL DEFAULT 0, -- Changed from INTEGER
+    length INTEGER NOT NULL DEFAULT 0, -- Changed from INTEGER
     last_grow TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    growth_count BIGINT NOT NULL DEFAULT 0, -- Changed from INTEGER
-    dick_of_day_count BIGINT NOT NULL DEFAULT 0, -- Changed from INTEGER
-    pvp_wins BIGINT NOT NULL DEFAULT 0, -- Changed from INTEGER
-    pvp_losses BIGINT NOT NULL DEFAULT 0, -- Changed from INTEGER
-    pvp_max_streak BIGINT NOT NULL DEFAULT 0, -- Changed from INTEGER
-    pvp_current_streak BIGINT NOT NULL DEFAULT 0, -- Changed from INTEGER
-    cm_won BIGINT NOT NULL DEFAULT 0, -- Changed from INTEGER
-    cm_lost BIGINT NOT NULL DEFAULT 0, -- Changed from INTEGER
+    growth_count INTEGER NOT NULL DEFAULT 0, -- Changed from INTEGER
+    dick_of_day_count INTEGER NOT NULL DEFAULT 0, -- Changed from INTEGER
+    pvp_wins INTEGER NOT NULL DEFAULT 0, -- Changed from INTEGER
+    pvp_losses INTEGER NOT NULL DEFAULT 0, -- Changed from INTEGER
+    pvp_max_streak INTEGER NOT NULL DEFAULT 0, -- Changed from INTEGER
+    pvp_current_streak INTEGER NOT NULL DEFAULT 0, -- Changed from INTEGER
+    cm_won INTEGER NOT NULL DEFAULT 0, -- Changed from INTEGER
+    cm_lost INTEGER NOT NULL DEFAULT 0, -- Changed from INTEGER
     UNIQUE(user_id, guild_id)
 );
 
