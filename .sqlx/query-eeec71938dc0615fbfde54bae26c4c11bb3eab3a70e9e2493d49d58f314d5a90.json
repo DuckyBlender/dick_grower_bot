@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE guild_settings SET last_dotd = NOW()\n         WHERE guild_id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "eeec71938dc0615fbfde54bae26c4c11bb3eab3a70e9e2493d49d58f314d5a90"
+}

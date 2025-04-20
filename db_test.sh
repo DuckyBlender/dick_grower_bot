@@ -18,4 +18,4 @@ docker run -d \
   -e POSTGRES_PASSWORD=mysecretpassword \
   -v postgres_data:/var/lib/postgresql/data \
   --restart unless-stopped \
-  postgres:15 # Or your chosen version
+  postgres:alpine # Or your chosen version

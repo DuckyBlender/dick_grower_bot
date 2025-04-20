@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO guild_settings (guild_id, last_dotd)\n                 VALUES ($1, NOW() - INTERVAL '2 days')",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "692fa0abe5fa2b6b4d4f13d2a7714cb0ff59859b6fec40ace826cb8bed187147"
+}

@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE dicks SET \n         length = length - $1,\n         pvp_losses = pvp_losses + 1,\n         pvp_current_streak = 0,\n         cm_lost = cm_lost + $2\n         WHERE user_id = $3 AND guild_id = $4",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "3befc99643ab4874a9c0e3cc0191269f8f4d539815faae1930ee3835d97bc6c5"
+}

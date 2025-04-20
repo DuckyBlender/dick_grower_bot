@@ -1,0 +1,35 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT last_grow, length, growth_count FROM dicks WHERE user_id = $1 AND guild_id = $2",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "last_grow",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 1,
+        "name": "length",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "growth_count",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "c0019656117e74d57f63f68c211b8b967eb7ec3eb1abb06a934a5a99594db26c"
+}

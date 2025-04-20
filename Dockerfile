@@ -1,4 +1,4 @@
-FROM messense/rust-musl-cross:x86_64-musl as chef
+FROM messense/rust-musl-cross:x86_64-musl AS chef
 ENV SQLX_OFFLINE=true
 RUN cargo install cargo-chef
 WORKDIR /dick_grower_bot
@@ -19,12 +19,12 @@ COPY . .
 RUN cargo build --release --target x86_64-unknown-linux-musl
 # Install sqlx-cli in the builder stage so we can copy it later
 # Adjust features based on your database (e.g., mysql, sqlite)
-RUN cargo install sqlx-cli --no-default-features --features native-tls,postgres
+RUN cargo install sqlx-cli --no-default-features --features rustls,postgres
 
 # Create a new stage with a minimal Alpine image
 FROM alpine:latest
 # Install runtime dependencies (e.g., ca-certificates for TLS)
-RUN apk add --no-cache ca-certificates openssl
+RUN apk add --no-cache ca-certificates
 
 WORKDIR /app
 

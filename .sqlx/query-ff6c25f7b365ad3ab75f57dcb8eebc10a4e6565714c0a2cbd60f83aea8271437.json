@@ -1,0 +1,71 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT length, dick_of_day_count, last_grow, \n                pvp_wins, pvp_losses, pvp_max_streak, pvp_current_streak,\n                cm_won, cm_lost\n         FROM dicks \n         WHERE user_id = $1 AND guild_id = $2",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "length",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "dick_of_day_count",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "last_grow",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 3,
+        "name": "pvp_wins",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 4,
+        "name": "pvp_losses",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 5,
+        "name": "pvp_max_streak",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 6,
+        "name": "pvp_current_streak",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 7,
+        "name": "cm_won",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 8,
+        "name": "cm_lost",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "ff6c25f7b365ad3ab75f57dcb8eebc10a4e6565714c0a2cbd60f83aea8271437"
+}

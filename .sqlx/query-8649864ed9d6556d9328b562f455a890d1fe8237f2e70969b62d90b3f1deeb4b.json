@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO dicks (user_id, guild_id, length, last_grow, growth_count, dick_of_day_count, \n                                   pvp_wins, pvp_losses, pvp_max_streak, pvp_current_streak,\n                                   cm_won, cm_lost)\n                 VALUES ($1, $2, 0, NOW(), 0, 0, 0, 0, 0, 0, 0, 0)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "8649864ed9d6556d9328b562f455a890d1fe8237f2e70969b62d90b3f1deeb4b"
+}
