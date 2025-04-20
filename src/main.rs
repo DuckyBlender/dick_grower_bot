@@ -243,15 +243,33 @@ async fn main() {
     let token = env::var("DISCORD_TOKEN").expect("Expected a discord token in the environment");
 
     // Connect to the database using a connection pool
+    info!("Connecting to the database...");
     let database = PgPool::connect(&env::var("DATABASE_URL").unwrap())
         .await
-        .expect("Coudn't connect to the sqlite database");
+        .expect("Couldn't connect to the Postgres database");
+    info!("Connected to the database");
 
-    // Run migrations
-    sqlx::migrate!("./migrations")
-        .run(&database)
-        .await
-        .expect("Failed to run migrations");
+    // Check if the 'dicks' table exists before running migrations
+    let table_exists: (bool,) = sqlx::query_as(
+        "SELECT EXISTS (
+            SELECT FROM information_schema.tables 
+            WHERE table_schema = 'public' AND table_name = 'dicks'
+        )"
+    )
+    .fetch_one(&database)
+    .await
+    .expect("Failed to check if 'dicks' table exists");
+
+    if !table_exists.0 {
+        info!("Running migrations...");
+        sqlx::migrate!("./migrations")
+            .run(&database)
+            .await
+            .expect("Failed to run migrations");
+        info!("Migrations completed");
+    } else {
+        info!("Database already initialized, skipping migrations.");
+    }
 
     // Initialize the bot
     let intents =

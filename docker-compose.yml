@@ -2,6 +2,8 @@ services:
   api:
     env_file:
       - .env
+    environment:
+      - DATABASE_URL=postgres://dick_user:mysecretpassword@db:5432/dick_data
     build:
       context: .
       dockerfile: Dockerfile

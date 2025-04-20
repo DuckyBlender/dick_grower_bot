@@ -12,7 +12,7 @@ docker volume rm postgres_data
 # 4. Re-run your original command to start fresh
 docker run -d \
   --name sqlx-postgres-dev \
-  -p 5432:5432 \
+  -p 5431:5432 \
   -e POSTGRES_DB=dick_data \
   -e POSTGRES_USER=dick_user \
   -e POSTGRES_PASSWORD=mysecretpassword \
