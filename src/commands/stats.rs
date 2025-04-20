@@ -1,6 +1,5 @@
 use crate::Bot;
 use crate::time::check_30_minutes;
-use chrono::NaiveDateTime;
 use log::error;
 use serenity::all::{
     CommandInteraction, CreateEmbed, CreateEmbedFooter, CreateInteractionResponse,
@@ -43,7 +42,7 @@ pub async fn handle_stats_command(
                 pvp_wins, pvp_losses, pvp_max_streak, pvp_current_streak,
                 cm_won, cm_lost
          FROM dicks 
-         WHERE user_id = ? AND guild_id = ?",
+         WHERE user_id = $1 AND guild_id = $2",
         user_id,
         guild_id
     )
@@ -89,17 +88,16 @@ pub async fn handle_stats_command(
     // Get rank
     let rank = match sqlx::query!(
         "SELECT COUNT(*) as rank FROM dicks 
-         WHERE guild_id = ? AND length > (
-            SELECT length FROM dicks WHERE user_id = ? AND guild_id = ?
+         WHERE guild_id = $1 AND length > (
+            SELECT length FROM dicks WHERE user_id = $2 AND guild_id = $1
          )",
         guild_id,
-        user_id,
-        guild_id
+        user_id
     )
     .fetch_one(&bot.database)
     .await
     {
-        Ok(record) => record.rank + 1, // +1 because we're counting users with MORE length
+        Ok(record) => record.rank.unwrap_or(0) + 1, // +1 because we're counting users with MORE length
         Err(why) => {
             error!("Error fetching rank: {:?}", why);
             0
@@ -107,8 +105,7 @@ pub async fn handle_stats_command(
     };
 
     // Calculate growth status - only show for own user
-    let last_grow = NaiveDateTime::parse_from_str(&user_stats.last_grow, "%Y-%m-%d %H:%M:%S")
-        .unwrap_or_default();
+    let last_grow = user_stats.last_grow.naive_utc();
 
     // Check if user can grow today
     let time_left = check_30_minutes(&last_grow);

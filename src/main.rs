@@ -11,8 +11,8 @@ use serenity::builder::CreateCommandOption;
 use serenity::model::application::{CommandOptionType, Interaction};
 use serenity::model::gateway::Ready;
 use serenity::prelude::*;
-use sqlx::SqlitePool;
-use sqlx::{Pool, Sqlite};
+use sqlx::PgPool;
+use sqlx::{Pool, Postgres};
 use std::collections::HashMap;
 use std::env;
 use std::sync::Arc;
@@ -30,7 +30,7 @@ impl TypeMapKey for Bot {
 }
 
 pub struct Bot {
-    pub database: Pool<Sqlite>,
+    pub database: Pool<Postgres>,
     pub pvp_challenges: RwLock<HashMap<String, PvpChallenge>>,
 }
 
@@ -243,7 +243,7 @@ async fn main() {
     let token = env::var("DISCORD_TOKEN").expect("Expected a discord token in the environment");
 
     // Connect to the database using a connection pool
-    let database = SqlitePool::connect(&env::var("DATABASE_URL").unwrap())
+    let database = PgPool::connect(&env::var("DATABASE_URL").unwrap())
         .await
         .expect("Coudn't connect to the sqlite database");
 

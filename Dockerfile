@@ -1,74 +1,45 @@
-# Chef planner stage
-FROM lukemathwalker/cargo-chef:latest-rust-1 AS chef
-WORKDIR /app
+FROM messense/rust-musl-cross:x86_64-musl as chef
+ENV SQLX_OFFLINE=true
+RUN cargo install cargo-chef
+WORKDIR /dick_grower_bot
 
-# Planner stage - create recipe.json for dependencies
 FROM chef AS planner
+# Copy source code from previous stage
 COPY . .
+# Generate info for caching dependencies
 RUN cargo chef prepare --recipe-path recipe.json
 
-# Builder stage with cached dependencies
 FROM chef AS builder
-
-# Install SQLite and other dependencies for building
-RUN apt update && apt install -y libsqlite3-dev clang && \
-    rm -rf /var/lib/apt/lists/*
-
-# Install SQLx CLI
-RUN cargo install sqlx-cli --no-default-features --features sqlite-unbundled,rustls
-
-WORKDIR /app
-
-# Build dependencies - this is the caching Docker layer!
-COPY --from=planner /app/recipe.json recipe.json
-RUN cargo chef cook --release --recipe-path recipe.json
-
-# Now copy the actual source code
+COPY --from=planner /dick_grower_bot/recipe.json recipe.json
+# Build & cache dependencies
+RUN cargo chef cook --release --target x86_64-unknown-linux-musl --recipe-path recipe.json
+# Copy source code from previous stage
 COPY . .
+# Build application
+RUN cargo build --release --target x86_64-unknown-linux-musl
+# Install sqlx-cli in the builder stage so we can copy it later
+# Adjust features based on your database (e.g., mysql, sqlite)
+RUN cargo install sqlx-cli --no-default-features --features native-tls,postgres
 
-# Create database directory
-RUN mkdir -p /app/data
+# Create a new stage with a minimal Alpine image
+FROM alpine:latest
+# Install runtime dependencies (e.g., ca-certificates for TLS)
+RUN apk add --no-cache ca-certificates openssl
 
-# Create database and run migrations
-RUN sqlx db create --database-url=sqlite:/app/data/database.sqlite
-RUN sqlx migrate run --database-url=sqlite:/app/data/database.sqlite
-
-# Prepare SQLx offline cache
-RUN cargo sqlx prepare --database-url sqlite:/app/data/database.sqlite
-
-# Build the application with SQLX_OFFLINE enabled
-ENV SQLX_OFFLINE=true
-RUN cargo build --release
-
-# Runtime stage
-FROM debian:bookworm-slim
-
-# Install SQLite runtime
-RUN apt update && apt install -y libsqlite3-0 ca-certificates && \
-    rm -rf /var/lib/apt/lists/*
-
-# Set working directory
 WORKDIR /app
 
-# Copy the binary from the build stage
-COPY --from=builder /app/target/release/dick_grower_bot /app/dick_grower_bot
-# Copy .env file
-COPY .env /app/.env
-# Copy the .sqlx directory containing the SQLx offline cache
-COPY --from=builder /app/.sqlx /app/.sqlx
+# Copy necessary artifacts from the builder stage
+COPY --from=builder /dick_grower_bot/target/x86_64-unknown-linux-musl/release/dick_grower_bot /app/dick_grower_bot
+# Copy sqlx-cli from the builder stage's cargo bin directory
+COPY --from=builder /root/.cargo/bin/sqlx /usr/local/bin/sqlx
+# Ensure the migrations directory exists in the source and copy it
+COPY --from=builder /dick_grower_bot/migrations /app/migrations
 
-# Create data directory
-RUN mkdir -p /app/data
-# Copy the pre-populated database from build stage
-COPY --from=builder /app/data/database.sqlite /app/data/database.sqlite
-# Ensure proper permissions
-RUN chmod 644 /app/data/database.sqlite && chmod 755 /app/data
+# Add and make executable the entrypoint script
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
 
-# Create volume for data
-VOLUME /app/data
-
-# Set environment variable
-ENV DATABASE_URL=sqlite:/app/data/database.sqlite
-
-# Run the application
+# Set the entrypoint script to run on container start
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+# The command to run the application (will be executed by the entrypoint script)
 CMD ["/app/dick_grower_bot"]

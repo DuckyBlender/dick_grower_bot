@@ -1,6 +1,5 @@
 use crate::Bot;
 use crate::time::check_utc_day_reset;
-use chrono::NaiveDateTime;
 use log::{error, info};
 use rand::Rng;
 use serenity::all::{
@@ -21,15 +20,14 @@ pub async fn handle_dotd_command(
 
     // Check if DOTD has been done today for this guild
     match sqlx::query!(
-        "SELECT last_dotd FROM guild_settings WHERE guild_id = ?",
+        "SELECT last_dotd FROM guild_settings WHERE guild_id = $1",
         guild_id
     )
     .fetch_optional(&bot.database)
     .await
     {
         Ok(Some(record)) => {
-            let last_dotd = NaiveDateTime::parse_from_str(&record.last_dotd, "%Y-%m-%d %H:%M:%S")
-                .unwrap_or_default();
+            let last_dotd = record.last_dotd.naive_utc();
 
             // Check if this is a new UTC day
             let time_left = check_utc_day_reset(&last_dotd);
@@ -57,7 +55,7 @@ pub async fn handle_dotd_command(
             info!("New guild detected, adding guild {} to database", guild_id);
             if let Err(why) = sqlx::query!(
                 "INSERT INTO guild_settings (guild_id, last_dotd)
-                 VALUES (?, datetime('now', '-2 days'))",
+                 VALUES ($1, NOW() - INTERVAL '2 days')",
                 guild_id
             )
             .execute(&bot.database)
@@ -84,8 +82,8 @@ pub async fn handle_dotd_command(
     // Get active users in the guild
     let active_users = match sqlx::query!(
         "SELECT user_id, length FROM dicks
-         WHERE guild_id = ?
-         AND last_grow > datetime('now', '-7 days')",
+         WHERE guild_id = $1
+         AND last_grow > NOW() - INTERVAL '7 days'",
         guild_id
     )
     .fetch_all(&bot.database)
@@ -130,8 +128,8 @@ pub async fn handle_dotd_command(
 
     // Update DB
     match sqlx::query!(
-        "UPDATE dicks SET length = length + ?, dick_of_day_count = dick_of_day_count + 1
-         WHERE user_id = ? AND guild_id = ?",
+        "UPDATE dicks SET length = length + $1, dick_of_day_count = dick_of_day_count + 1
+         WHERE user_id = $2 AND guild_id = $3",
         bonus,
         winner.user_id,
         guild_id
@@ -156,8 +154,8 @@ pub async fn handle_dotd_command(
 
     // Update guild's last DOTD time
     match sqlx::query!(
-        "UPDATE guild_settings SET last_dotd = datetime('now')
-         WHERE guild_id = ?",
+        "UPDATE guild_settings SET last_dotd = NOW()
+         WHERE guild_id = $1",
         guild_id
     )
     .execute(&bot.database)

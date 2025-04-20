@@ -49,7 +49,7 @@ pub async fn handle_pvp_command(
     let challenger_id_str = challenger_id.to_string();
     let guild_id_str = guild_id.to_string();
     let challenger_length = match sqlx::query!(
-        "SELECT length FROM dicks WHERE user_id = ? AND guild_id = ?",
+        "SELECT length FROM dicks WHERE user_id = $1 AND guild_id = $2",
         challenger_id_str,
         guild_id_str
     )
@@ -67,7 +67,7 @@ pub async fn handle_pvp_command(
                 "INSERT INTO dicks (user_id, guild_id, length, last_grow, dick_of_day_count, 
                                    pvp_wins, pvp_losses, pvp_max_streak, pvp_current_streak,
                                    cm_won, cm_lost)
-                 VALUES (?, ?, 0, datetime('now', '-2 days'), 0, 0, 0, 0, 0, 0, 0)",
+                 VALUES ($1, $2, 0, NOW() - INTERVAL '2 days', 0, 0, 0, 0, 0, 0, 0)",
                 challenger_id_str,
                 guild_id_str
             )
@@ -272,7 +272,7 @@ pub async fn handle_pvp_accept(
     let challenger_id_str = challenger_id.to_string();
     let guild_id_str = guild_id.to_string();
     let challenger_length = match sqlx::query!(
-        "SELECT length FROM dicks WHERE user_id = ? AND guild_id = ?",
+        "SELECT length FROM dicks WHERE user_id = $1 AND guild_id = $2",
         challenger_id_str,
         guild_id_str
     )
@@ -327,7 +327,7 @@ pub async fn handle_pvp_accept(
     let challenged_id_str = challenged_id.to_string();
     let guild_id_str = guild_id.to_string();
     let challenged_length = match sqlx::query!(
-        "SELECT length FROM dicks WHERE user_id = ? AND guild_id = ?",
+        "SELECT length FROM dicks WHERE user_id = $1 AND guild_id = $2",
         challenged_id_str,
         guild_id_str
     )
@@ -345,7 +345,7 @@ pub async fn handle_pvp_accept(
                 "INSERT INTO dicks (user_id, guild_id, length, last_grow, dick_of_day_count, 
                                    pvp_wins, pvp_losses, pvp_max_streak, pvp_current_streak,
                                    cm_won, cm_lost)
-                 VALUES (?, ?, 0, datetime('now', '-2 days'), 0, 0, 0, 0, 0, 0, 0)",
+                 VALUES ($1, $2, 0, NOW() - INTERVAL '2 days', 0, 0, 0, 0, 0, 0, 0)",
                 challenged_id_str,
                 guild_id_str
             )
@@ -482,7 +482,7 @@ pub async fn handle_pvp_accept(
     let guild_id_str = guild_id.to_string();
     let loser_id_str = loser_id.to_string();
     let winner_streak = match sqlx::query!(
-        "SELECT pvp_current_streak FROM dicks WHERE user_id = ? AND guild_id = ?",
+        "SELECT pvp_current_streak FROM dicks WHERE user_id = $1 AND guild_id = $2",
         winner_id_str,
         guild_id_str
     )
@@ -501,12 +501,12 @@ pub async fn handle_pvp_accept(
 
     // Update the database for winner
     match sqlx::query!(
-        "UPDATE dicks SET length = length + ?, 
+        "UPDATE dicks SET length = length + $1, 
          pvp_wins = pvp_wins + 1,
-         pvp_current_streak = ?,
-         pvp_max_streak = CASE WHEN ? > pvp_max_streak THEN ? ELSE pvp_max_streak END,
-         cm_won = cm_won + ?
-         WHERE user_id = ? AND guild_id = ?",
+         pvp_current_streak = $2,
+         pvp_max_streak = CASE WHEN $3 > pvp_max_streak THEN $4 ELSE pvp_max_streak END,
+         cm_won = cm_won + $5
+         WHERE user_id = $6 AND guild_id = $7",
         bet,
         new_winner_streak,
         new_winner_streak,
@@ -525,11 +525,11 @@ pub async fn handle_pvp_accept(
     // Update the database for loser
     match sqlx::query!(
         "UPDATE dicks SET 
-         length = length - ?,
+         length = length - $1,
          pvp_losses = pvp_losses + 1,
          pvp_current_streak = 0,
-         cm_lost = cm_lost + ?
-         WHERE user_id = ? AND guild_id = ?",
+         cm_lost = cm_lost + $2
+         WHERE user_id = $3 AND guild_id = $4",
         bet,
         bet,
         loser_id_str,
@@ -544,7 +544,7 @@ pub async fn handle_pvp_accept(
 
     // Get updated lengths
     let winner_length = match sqlx::query!(
-        "SELECT length FROM dicks WHERE user_id = ? AND guild_id = ?",
+        "SELECT length FROM dicks WHERE user_id = $1 AND guild_id = $2",
         winner_id_str,
         guild_id_str
     )
@@ -556,7 +556,7 @@ pub async fn handle_pvp_accept(
     };
 
     let loser_length = match sqlx::query!(
-        "SELECT length FROM dicks WHERE user_id = ? AND guild_id = ?",
+        "SELECT length FROM dicks WHERE user_id = $1 AND guild_id = $2",
         loser_id_str,
         guild_id_str
     )

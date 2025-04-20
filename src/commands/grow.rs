@@ -1,6 +1,5 @@
 use crate::Bot;
 use crate::time::check_30_minutes;
-use chrono::NaiveDateTime;
 use log::{error, info};
 use rand::Rng;
 use serenity::all::{
@@ -21,7 +20,7 @@ pub async fn handle_grow_command(
 
     // Check if the user has grown today and get their stats
     let user_stats = match sqlx::query!(
-        "SELECT last_grow, length, growth_count FROM dicks WHERE user_id = ? AND guild_id = ?",
+        "SELECT last_grow, length, growth_count FROM dicks WHERE user_id = $1 AND guild_id = $2",
         user_id,
         guild_id
     )
@@ -29,8 +28,7 @@ pub async fn handle_grow_command(
     .await
     {
         Ok(Some(record)) => {
-            let last_grow = NaiveDateTime::parse_from_str(&record.last_grow, "%Y-%m-%d %H:%M:%S")
-                .unwrap_or_default();
+            let last_grow = record.last_grow.naive_utc();
 
             let time_left = check_30_minutes(&last_grow);
             if !time_left.is_zero() {
@@ -67,7 +65,7 @@ pub async fn handle_grow_command(
                 "INSERT INTO dicks (user_id, guild_id, length, last_grow, growth_count, dick_of_day_count, 
                                    pvp_wins, pvp_losses, pvp_max_streak, pvp_current_streak,
                                    cm_won, cm_lost)
-                 VALUES (?, ?, 0, datetime('now'), 0, 0, 0, 0, 0, 0, 0, 0)",
+                 VALUES ($1, $2, 0, NOW(), 0, 0, 0, 0, 0, 0, 0, 0)",
                 user_id,
                 guild_id
             )
@@ -128,8 +126,8 @@ pub async fn handle_grow_command(
 
     // Update the database - increment growth count too
     match sqlx::query!(
-        "UPDATE dicks SET length = length + ?, last_grow = datetime('now'), growth_count = growth_count + 1
-         WHERE user_id = ? AND guild_id = ?",
+        "UPDATE dicks SET length = length + $1, last_grow = NOW(), growth_count = growth_count + 1
+         WHERE user_id = $2 AND guild_id = $3",
         growth,
         user_id,
         guild_id
@@ -154,7 +152,7 @@ pub async fn handle_grow_command(
 
     // Get new length
     let new_length = match sqlx::query!(
-        "SELECT length FROM dicks WHERE user_id = ? AND guild_id = ?",
+        "SELECT length FROM dicks WHERE user_id = $1 AND guild_id = $2",
         user_id,
         guild_id
     )

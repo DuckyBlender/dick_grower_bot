@@ -16,7 +16,7 @@ pub async fn update_presence(ctx: &Context) {
         .fetch_one(&bot.database)
         .await
     {
-        Ok(result) => result.count as usize,
+        Ok(result) => result.count.unwrap_or(0) as usize,
         Err(e) => {
             error!("Error counting users: {:?}", e);
             return;

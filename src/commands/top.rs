@@ -19,7 +19,7 @@ pub async fn handle_top_command(
     // Get top 10 users in this server
     let top_users = match sqlx::query!(
         "SELECT user_id, length FROM dicks 
-         WHERE guild_id = ? 
+         WHERE guild_id = $1 
          ORDER BY length DESC LIMIT 10",
         guild_id
     )

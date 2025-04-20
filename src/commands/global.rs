@@ -65,10 +65,10 @@ pub async fn handle_global_command(
         .fetch_one(&bot.database)
         .await
     {
-        Ok(result) => result.count,
+        Ok(result) => Some(result.count),
         Err(why) => {
             error!("Error fetching server count: {:?}", why);
-            0
+            None
         }
     };
 
@@ -77,10 +77,10 @@ pub async fn handle_global_command(
         .fetch_one(&bot.database)
         .await
     {
-        Ok(result) => result.count,
+        Ok(result) => Some(result.count),
         Err(why) => {
             error!("Error fetching total dick count: {:?}", why);
-            0
+            None
         }
     };
 
@@ -160,6 +160,17 @@ pub async fn handle_global_command(
         description.push_str(&format!("\n\n{}", winner_comment));
     }
 
+    // Convert counts to strings, using "?" if the query failed (returned None)
+    let server_count_str = server_count
+        .and_then(|c| c)
+        .map(|count| count.to_string())
+        .unwrap_or_else(|| "?".to_string());
+
+    let dick_count_str = dick_count
+        .and_then(|c| c)
+        .map(|count| count.to_string())
+        .unwrap_or_else(|| "?".to_string());
+
     command.create_followup(&ctx.http,
         CreateInteractionResponseFollowup::new().add_embed(
             CreateEmbed::new()
@@ -167,8 +178,8 @@ pub async fn handle_global_command(
                 .description(description)
                 .color(0x9B59B6) // Purple
                 .footer(CreateEmbedFooter::new(
-                    format!("🌐 {} servers | 🍆 {} total dicks | World domination starts with your dick. /grow every day!", 
-                        server_count, dick_count)
+                    format!("🌐 {} servers | 🍆 {} total dicks | World domination starts with your dick. /grow every day!",
+                        server_count_str, dick_count_str)
                 )),
         ),
     ).await?;
