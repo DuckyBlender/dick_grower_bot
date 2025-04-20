@@ -13,8 +13,8 @@ docker volume rm postgres_data
 docker run -d \
   --name sqlx-postgres-dev \
   -p 5432:5432 \
-  -e POSTGRES_DB=myappdb \
-  -e POSTGRES_USER=myappuser \
+  -e POSTGRES_DB=dick_data \
+  -e POSTGRES_USER=dick_user \
   -e POSTGRES_PASSWORD=mysecretpassword \
   -v postgres_data:/var/lib/postgresql/data \
   --restart unless-stopped \

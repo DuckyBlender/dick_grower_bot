@@ -247,6 +247,12 @@ async fn main() {
         .await
         .expect("Coudn't connect to the sqlite database");
 
+    // Run migrations
+    sqlx::migrate!("./migrations")
+        .run(&database)
+        .await
+        .expect("Failed to run migrations");
+
     // Initialize the bot
     let intents =
         GatewayIntents::GUILD_MESSAGES | GatewayIntents::MESSAGE_CONTENT | GatewayIntents::GUILDS;

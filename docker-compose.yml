@@ -1,7 +1,7 @@
 services:
   api:
-    environment:
-      DATABASE_URL: "postgres://postgres:mysecretpassword@dick_data:5432"
+    env_file:
+      - .env
     build:
       context: .
       dockerfile: Dockerfile
@@ -11,7 +11,9 @@ services:
     image: postgres:alpine
     restart: always
     environment:
-      POSTGRES_PASSWORD: mysecretpassword # since this isn't exposed to this internet it can be a weak password
+      POSTGRES_PASSWORD: mysecretpassword
+      POSTGRES_DB: dick_data
+      POSTGRES_USER: dick_user
     ports:
       - "5432:5432"
     volumes:
