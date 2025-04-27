@@ -126,7 +126,7 @@ pub async fn handle_dotd_command(
     let winner = &active_users[winner_idx];
 
     // Award bonus (5-10 cm - more than the automated nightly event)
-    let bonus = rand::rng().random_range(5..=10);
+    let bonus = rand::rng().random_range(10..=25);
 
     // Update DB
     match sqlx::query!(
