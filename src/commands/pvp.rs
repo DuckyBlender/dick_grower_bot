@@ -661,20 +661,25 @@ pub async fn handle_pvp_accept(
                     CreateEmbed::new()
                         .title("🏆 Dick Battle Results!")
                         .description(format!(
-                            "The contest has concluded!\n\n**{}** rolled **{}**\n**{}** rolled **{}**\n\n**{}** wins **{} cm**!\n\nNew lengths:\n**{}**: {} cm\n**{}**: {} cm\n\n{}{}{}",
+                            "{} won **{} cm**\n\n• {} rolled **{}**\n• {} rolled **{}**\n\n**New Lengths:**\n• {}: {} cm\n• {}: {} cm",
+                            winner_id.mention(), bet,
                             challenger, challenger_roll,
                             challenged, challenged_roll,
-                            winner_name, bet,
                             winner_name, winner_length,
                             loser_name, loser_length,
-                            taunt,
-                            bet_comment,
-                            streak_comment
                         ))
-                        .color(0x2ECC71) // Green
+                        .color(0x2ECC71)
                         .footer(CreateEmbedFooter::new("Size DOES matter after all!"))
+                        .field(
+                            "Summary",
+                            format!(
+                                "{}{}{}",
+                                taunt, bet_comment, streak_comment
+                            ).trim(),
+                            false,
+                        )
                 )
-                .components(vec![]), // Remove the button
+                .components(vec![]),
         ),
     ).await?;
 

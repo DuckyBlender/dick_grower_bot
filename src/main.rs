@@ -173,25 +173,6 @@ impl EventHandler for Handler {
                     .required(true)
                     .min_int_value(1),
                 ),
-            CreateCommand::new("gift")
-                .description("Gift centimeters to another user")
-                .add_option(
-                    CreateCommandOption::new(
-                        CommandOptionType::User,
-                        "user",
-                        "The user to gift centimeters to",
-                    )
-                    .required(true),
-                )
-                .add_option(
-                    CreateCommandOption::new(
-                        CommandOptionType::Integer,
-                        "amount",
-                        "The amount of cm to gift",
-                    )
-                    .required(true)
-                    .min_int_value(1),
-                ),
             CreateCommand::new("stats")
                 .description("View your or another user's dick stats")
                 .add_option(

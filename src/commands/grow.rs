@@ -1,5 +1,5 @@
 use crate::Bot;
-use crate::time::check_30_minutes;
+use crate::time::check_cooldown_minutes;
 use chrono::NaiveDateTime;
 use log::{error, info};
 use rand::Rng;
@@ -32,7 +32,7 @@ pub async fn handle_grow_command(
             let last_grow = NaiveDateTime::parse_from_str(&record.last_grow, "%Y-%m-%d %H:%M:%S")
                 .unwrap_or_default();
 
-            let time_left = check_30_minutes(&last_grow);
+            let time_left = check_cooldown_minutes(&last_grow);
             if !time_left.is_zero() {
                 let builder = CreateInteractionResponse::Message(
                     CreateInteractionResponseMessage::new()

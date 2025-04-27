@@ -17,7 +17,9 @@ A Discord bot that lets users grow their virtual... ahem... "cucumber". Compete 
 
 ## How It Works
 
-Every 30 minutes, users can use the `/grow` command for a chance to increase (or occasionally decrease) their length. Growth is measured in centimeters, and ranges from -5 to +10 cm per day (80% change to grow).
+Every 1 hour, users can use the `/grow` command for a chance to increase (or occasionally decrease) their length. Growth is measured in centimeters, and ranges from -5 to +10 cm per day (80% change to grow).
+
+`/dickoftheday` also gives 10-25 cm to a random active user once per day.
 
 New users get a grace period of guaranteed positive growth to help them get started!
 

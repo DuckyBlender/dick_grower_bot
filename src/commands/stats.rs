@@ -1,5 +1,5 @@
 use crate::Bot;
-use crate::time::check_30_minutes;
+use crate::time::check_cooldown_minutes;
 use chrono::NaiveDateTime;
 use log::error;
 use serenity::all::{
@@ -111,7 +111,7 @@ pub async fn handle_stats_command(
         .unwrap_or_default();
 
     // Check if user can grow today
-    let time_left = check_30_minutes(&last_grow);
+    let time_left = check_cooldown_minutes(&last_grow);
     let growth_status = if is_self {
         if time_left.is_zero() {
             "✅ You can grow now! Use /grow".to_string()
