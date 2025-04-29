@@ -14,3 +14,4 @@ pub use help::handle_help_command;
 pub use pvp::{PvpChallenge, handle_pvp_accept, handle_pvp_command};
 pub use stats::handle_stats_command;
 pub use top::handle_top_command;
+pub use crate::utils::escape_markdown;

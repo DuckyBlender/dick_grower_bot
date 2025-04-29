@@ -5,10 +5,11 @@ use log::{error, info};
 use rand::Rng;
 use serenity::all::{
     CommandInteraction, CreateEmbed, CreateEmbedFooter, CreateInteractionResponse,
-    CreateInteractionResponseMessage,
+    CreateInteractionResponseMessage, Mentionable,
 };
 use serenity::model::id::UserId;
 use serenity::prelude::*;
+use crate::commands::escape_markdown;
 
 pub async fn handle_dotd_command(
     ctx: &Context,
@@ -189,6 +190,9 @@ pub async fn handle_dotd_command(
         }
     };
 
+    let winner_mention = winner_user.mention();
+    let winner_name_escaped = escape_markdown(&winner_user.name);
+
     // Fun titles based on length
     let title = if winner.length + bonus <= 10 {
         "Tiny but Mighty"
@@ -205,14 +209,14 @@ pub async fn handle_dotd_command(
     let builder = CreateInteractionResponse::Message(
         CreateInteractionResponseMessage::new()
             // mention the winner, so they get a notification
-            .content(winner_user.mention().to_string())
+            .content(winner_mention.to_string())
             .add_embed(
                 CreateEmbed::new()
                     .title("🏆 Today's Dick of the Day! 🏆")
                     .color(0xFFD700) // Gold
                     .description(format!(
                         "After careful consideration, the Dick of the Day award goes to... **{}**!\n\nThis \"**{}**\" has been awarded a bonus of **+{} cm**, bringing their total to **{} cm**!\n\nCongratulations on your outstanding achievement in the field of... length!",
-                        winner_user.mention(), title, bonus, winner.length + bonus
+                        winner_name_escaped, title, bonus, winner.length + bonus
                     ))
                     .thumbnail(winner_user.face())
                     .footer(CreateEmbedFooter::new("Stay tuned for tomorrow's competition!"))

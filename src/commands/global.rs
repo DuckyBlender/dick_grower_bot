@@ -6,6 +6,7 @@ use serenity::all::{
 };
 use serenity::model::id::UserId;
 use serenity::prelude::*;
+use crate::commands::escape_markdown;
 
 pub async fn handle_global_command(
     ctx: &Context,
@@ -99,7 +100,7 @@ pub async fn handle_global_command(
             .to_user(&ctx)
             .await
         {
-            Ok(user) => user.name,
+            Ok(user) => escape_markdown(&user.name),
             Err(_) => "Unknown User".to_string(),
         };
 
@@ -108,7 +109,7 @@ pub async fn handle_global_command(
                 Ok(guild) => {
                     // Only show guild name if it's a community server (public)
                     if guild.features.contains(&"COMMUNITY".to_string()) {
-                        guild.name
+                        escape_markdown(&guild.name)
                     } else {
                         "private server".to_string()
                     }
@@ -134,7 +135,7 @@ pub async fn handle_global_command(
             .to_user(&ctx)
             .await
         {
-            Ok(user) => user.name,
+            Ok(user) => escape_markdown(&user.name),
             Err(_) => "Unknown User".to_string(),
         };
 
