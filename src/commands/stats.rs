@@ -7,6 +7,7 @@ use serenity::all::{
     CreateInteractionResponseMessage,
 };
 use serenity::prelude::*;
+use crate::commands::escape_markdown;
 
 pub async fn handle_stats_command(
     ctx: &Context,
@@ -155,14 +156,15 @@ pub async fn handle_stats_command(
         "LEGENDARY! Scientists want to study this mutation. BEWARE!"
     };
 
-    let title = format!("🍆 {}'s Dick Stats", target_user.name);
+    let escaped_target_name = escape_markdown(&target_user.name);
+    let title = format!("🍆 {}'s Dick Stats", escaped_target_name);
 
     let description = if is_self {
         "Here's everything you wanted to know about your cucumber (and probably some things you didn't):".to_string()
     } else {
         format!(
             "Here's everything to know about {}'s cucumber:",
-            target_user.name
+            escaped_target_name
         )
     };
 

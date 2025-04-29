@@ -6,6 +6,7 @@ use serenity::all::{
 };
 use serenity::model::id::UserId;
 use serenity::prelude::*;
+use crate::commands::escape_markdown; 
 
 pub async fn handle_top_command(
     ctx: &Context,
@@ -72,7 +73,7 @@ pub async fn handle_top_command(
             .to_user(&ctx)
             .await
         {
-            Ok(user) => user.name,
+            Ok(user) => escape_markdown(&user.name),
             Err(_) => "Unknown User".to_string(),
         };
 
@@ -102,7 +103,7 @@ pub async fn handle_top_command(
             .to_user(&ctx)
             .await
         {
-            Ok(user) => user.name,
+            Ok(user) => escape_markdown(&user.name),
             Err(_) => "Unknown User".to_string(),
         };
 
@@ -138,7 +139,7 @@ pub async fn handle_top_command(
     }
 
     let guild_name = match command.guild_id.unwrap().to_partial_guild(&ctx).await {
-        Ok(guild) => guild.name,
+        Ok(guild) => escape_markdown(&guild.name),
         Err(_) => "This Server".to_string(),
     };
 

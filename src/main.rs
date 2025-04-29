@@ -22,6 +22,7 @@ use tokio::time::Instant;
 mod commands;
 mod presence;
 mod time;
+mod utils;
 
 struct Handler;
 

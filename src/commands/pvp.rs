@@ -4,12 +4,13 @@ use log::{error, info};
 use rand::Rng;
 use serenity::all::{
     ButtonStyle, CommandInteraction, CreateActionRow, CreateButton, CreateEmbed, CreateEmbedFooter,
-    CreateInteractionResponse, CreateInteractionResponseMessage,
+    CreateInteractionResponse, CreateInteractionResponseMessage, Mentionable,
 };
 use serenity::model::id::UserId;
 use serenity::prelude::*;
 use std::cmp::Ordering;
 use std::time::{SystemTime, UNIX_EPOCH};
+use crate::escape_markdown;
 
 pub struct PvpChallenge {
     bet: i64,
@@ -133,7 +134,7 @@ pub async fn handle_pvp_command(
 
     // Get challenger username
     let challenger = match ctx.http.get_user(challenger_id).await {
-        Ok(user) => user.name,
+        Ok(user) => escape_markdown(&user.name),
         Err(_) => "Unknown User".to_string(),
     };
 
@@ -412,11 +413,11 @@ pub async fn handle_pvp_accept(
 
     // Get usernames
     let challenger = match ctx.http.get_user(challenger_id).await {
-        Ok(user) => user.name,
+        Ok(user) => escape_markdown(&user.name),
         Err(_) => "Unknown User".to_string(),
     };
 
-    let challenged = component.user.name.clone();
+    let challenged = escape_markdown(&component.user.name);
 
     // Roll for both users
     let challenger_roll = rand::rng().random_range(1..=100);
