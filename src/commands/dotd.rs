@@ -124,6 +124,7 @@ pub async fn handle_dotd_command(
 
     // Select a random winner
     let winner_idx = rand::rng().random_range(0..active_users.len());
+    info!("Generating a random number between 0 and {}: {}", active_users.len() - 1, winner_idx);
     let winner = &active_users[winner_idx];
 
     // Award bonus (5-10 cm - more than the automated nightly event)
