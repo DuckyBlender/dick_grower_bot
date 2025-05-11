@@ -19,7 +19,7 @@ pub fn check_utc_day_reset(last_time: &NaiveDateTime) -> Duration {
     }
 }
 
-// Combined function that checks if 30 minutes passed and returns time remaining
+// Combined function that checks if 60 minutes passed and returns time remaining
 pub fn check_cooldown_minutes(last_time: &NaiveDateTime) -> Duration {
     let now = Utc::now().naive_utc();
     let duration = now - *last_time;

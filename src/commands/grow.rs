@@ -33,6 +33,10 @@ pub async fn handle_grow_command(
                 .unwrap_or_default();
 
             let time_left = check_cooldown_minutes(&last_grow);
+            // Format time_left into discord timestamp
+            let unix_timestamp = last_grow.and_utc().timestamp() + time_left.num_minutes() * 60;
+            let discord_timestamp = format!("<t:{}:R>", unix_timestamp);
+
             if !time_left.is_zero() {
                 let builder = CreateInteractionResponse::Message(
                     CreateInteractionResponseMessage::new()
@@ -40,9 +44,7 @@ pub async fn handle_grow_command(
                             CreateEmbed::new()
                                 .title("🕒 Hold up, speedy!")
                                 .description(format!(
-                                    "You've already played with your dick today! Try again in **{}h {}m**\n\nExcessive stimulation might cause injuries, you know?",
-                                    time_left.num_hours(),
-                                    time_left.num_minutes() % 60
+                                    "You've already played with your dick today! Try again in {discord_timestamp}\n\nExcessive stimulation might cause injuries, you know?",
                                 ))
                                 .color(0xFF5733)
                                 .footer(CreateEmbedFooter::new(

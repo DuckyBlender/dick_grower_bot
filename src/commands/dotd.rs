@@ -34,6 +34,9 @@ pub async fn handle_dotd_command(
 
             // Check if this is a new UTC day
             let time_left = check_utc_day_reset(&last_dotd);
+            let unix_timestamp = last_dotd.and_utc().timestamp() + time_left.num_minutes() * 60;
+            let discord_timestamp = format!("<t:{}:R>", unix_timestamp);
+            
             if !time_left.is_zero() {
                 let builder = CreateInteractionResponse::Message(
                     CreateInteractionResponseMessage::new()
@@ -41,9 +44,7 @@ pub async fn handle_dotd_command(
                             CreateEmbed::new()
                                 .title("⏰ Dick of the Day Already Awarded!")
                                 .description(format!(
-                                    "This server has already crowned a Dick of the Day today!\n\nNext Dick of the Day in **{}h {}m**",
-                                    time_left.num_hours(),
-                                    time_left.num_minutes() % 60
+                                    "This server has already crowned a Dick of the Day today!\n\nNext Dick of the Day in {discord_timestamp}",
                                 ))
                                 .color(0xFF5733)
                         )

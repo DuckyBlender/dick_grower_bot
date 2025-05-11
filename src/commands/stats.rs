@@ -113,14 +113,15 @@ pub async fn handle_stats_command(
 
     // Check if user can grow today
     let time_left = check_cooldown_minutes(&last_grow);
+    let unix_timestamp = last_grow.and_utc().timestamp() + time_left.num_minutes() * 60;
+    let discord_timestamp = format!("<t:{}:R>", unix_timestamp);
+
     let growth_status = if is_self {
         if time_left.is_zero() {
             "✅ You can grow now! Use /grow".to_string()
         } else {
             format!(
-                "⏰ Next growth in: **{}h {}m**",
-                time_left.num_hours(),
-                time_left.num_minutes() % 60
+                "⏰ Next growth in: {discord_timestamp}",
             )
         }
     } else if time_left.is_zero() {
