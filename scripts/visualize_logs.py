@@ -6,7 +6,7 @@ import os
 # --- Configuration ---
 CSV_FILE_PATH = 'grow_commands.csv' # Input CSV from the previous script
 OUTPUT_HTML_PATH = 'grow_command_intervals.html' # Output HTML plot
-COOLDOWN_MINUTES = 30
+COOLDOWN_MINUTES = 60
 # -------------------
 
 print(f"Reading CSV file: {CSV_FILE_PATH}")
