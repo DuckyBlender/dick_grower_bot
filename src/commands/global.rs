@@ -5,6 +5,7 @@ use serenity::all::{
     CommandInteraction, CreateEmbed, CreateEmbedFooter, CreateInteractionResponseFollowup,
 };
 use serenity::model::id::UserId;
+use crate::utils::get_bot_stats;
 use serenity::prelude::*;
 use crate::commands::escape_markdown;
 
@@ -61,27 +62,12 @@ pub async fn handle_global_command(
         return Ok(());
     }
 
-    // Fetch server count
-    let server_count = match sqlx::query!("SELECT COUNT(DISTINCT guild_id) as count FROM dicks")
-        .fetch_one(&bot.database)
-        .await
-    {
-        Ok(result) => result.count,
+    // Fetch bot stats
+    let (server_count_str, dick_count_str) = match get_bot_stats(ctx, bot).await {
+        Ok(stats) => (stats.server_count.to_string(), stats.dick_count.to_string()),
         Err(why) => {
-            error!("Error fetching server count: {:?}", why);
-            0
-        }
-    };
-
-    // Fetch total dick count
-    let dick_count = match sqlx::query!("SELECT COUNT(*) as count FROM dicks")
-        .fetch_one(&bot.database)
-        .await
-    {
-        Ok(result) => result.count,
-        Err(why) => {
-            error!("Error fetching total dick count: {:?}", why);
-            0
+            error!("Error fetching bot stats for global command: {:?}", why);
+            ("?".to_string(), "?".to_string()) // Use "?" on error
         }
     };
 
@@ -169,7 +155,7 @@ pub async fn handle_global_command(
                 .color(0x9B59B6) // Purple
                 .footer(CreateEmbedFooter::new(
                     format!("🌐 {} servers | 🍆 {} total dicks | World domination starts with your dick. /grow every day!", 
-                        server_count, dick_count)
+                        server_count_str, dick_count_str)
                 )),
         ),
     ).await?;

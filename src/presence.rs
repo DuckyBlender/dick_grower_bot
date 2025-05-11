@@ -1,5 +1,6 @@
 use crate::Bot;
-use log::{error, info};
+use crate::utils::get_bot_stats;
+use log::{info, warn};
 use serenity::all::ActivityData;
 use serenity::prelude::*;
 
@@ -8,23 +9,16 @@ pub async fn update_presence(ctx: &Context) {
     let data = ctx.data.read().await;
     let bot = data.get::<Bot>().unwrap();
 
-    // Get current guild count from context cache
-    let guild_count = ctx.cache.guilds().len();
-
-    // Count unique users from database
-    let user_count = match sqlx::query!("SELECT COUNT(DISTINCT user_id) as count FROM dicks")
-        .fetch_one(&bot.database)
-        .await
-    {
-        Ok(result) => result.count as usize,
-        Err(e) => {
-            error!("Error counting users: {:?}", e);
-            return;
+    match get_bot_stats(ctx, bot).await {
+        Ok(stats) => {
+            let desc = format!("{} servers & {} dicks", stats.server_count, stats.dick_count);
+            info!("Updating presence to: {}", desc);
+            ctx.set_activity(Some(ActivityData::watching(desc)));
         }
-    };
-
-    let desc = format!("{} servers & {} dicks", guild_count, user_count);
-    info!("Updating presence to: {}", desc);
-
-    ctx.set_activity(Some(ActivityData::watching(desc)));
+        Err(e) => {
+            warn!("Error fetching bot stats for presence update: {:?}", e);
+            let desc = "? servers & ? dicks";
+            ctx.set_activity(Some(ActivityData::watching(desc)));
+        }
+    }
 }
