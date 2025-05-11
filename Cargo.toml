@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 serenity = { version = "0.12", default-features = false, features = ["client", "gateway", "rustls_backend", "model", "cache"] }
-tokio = { version = "1.44", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1.45", features = ["macros", "rt-multi-thread"] }
 sqlx = { version = "0.8", default-features = false, features = ["tls-rustls", "runtime-tokio", "sqlite", "macros", "migrate"] }
 rand = "0.9"
 chrono = "0.4"
