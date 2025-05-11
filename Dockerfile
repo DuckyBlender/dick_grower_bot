@@ -34,7 +34,13 @@ RUN sqlx db create --database-url=sqlite:/app/data/database.sqlite
 RUN sqlx migrate run --database-url=sqlite:/app/data/database.sqlite
 
 # Prepare SQLx offline cache
-RUN cargo sqlx prepare --database-url sqlite:/app/data/database.sqlite
+# If .sqlx directory exists (copied from host via 'COPY . .'), use it. Otherwise, generate it.
+RUN if [ -d .sqlx ]; then \
+        echo ".sqlx directory found, skipping prepare"; \
+    else \
+        echo ".sqlx directory not found, running prepare"; \
+        cargo sqlx prepare --database-url sqlite:/app/data/database.sqlite; \
+    fi
 
 # Build the application with SQLX_OFFLINE enabled
 ENV SQLX_OFFLINE=true
