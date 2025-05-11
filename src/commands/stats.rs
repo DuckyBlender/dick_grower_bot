@@ -113,7 +113,7 @@ pub async fn handle_stats_command(
 
     // Check if user can grow today
     let time_left = check_cooldown_minutes(&last_grow);
-    let unix_timestamp = last_grow.and_utc().timestamp() + time_left.num_minutes() * 60;
+    let unix_timestamp = chrono::Utc::now().timestamp() + time_left.num_seconds();
     let discord_timestamp = format!("<t:{}:R>", unix_timestamp);
 
     let growth_status = if is_self {

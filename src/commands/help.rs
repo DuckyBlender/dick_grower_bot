@@ -9,7 +9,7 @@ pub async fn handle_help_command(
     command: &CommandInteraction,
 ) -> Result<(), serenity::Error> {
     let description = "\
-        `/grow` - Grow your dick once per day\n\
+        `/grow` - Grow your dick once per 60 minutes\n\
         `/top` - View the server's dick leaderboard\n\
         `/global` - View the global dick leaderboard\n\
         `/pvp <bet>` - Challenge someone to a dick battle with a cm bet\n\
