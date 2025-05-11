@@ -34,7 +34,7 @@ pub async fn handle_grow_command(
 
             let time_left = check_cooldown_minutes(&last_grow);
             // Format time_left into discord timestamp
-            let unix_timestamp = last_grow.and_utc().timestamp() + time_left.num_minutes() * 60;
+            let unix_timestamp = chrono::Utc::now().timestamp() + time_left.num_seconds();
             let discord_timestamp = format!("<t:{}:R>", unix_timestamp);
 
             if !time_left.is_zero() {
