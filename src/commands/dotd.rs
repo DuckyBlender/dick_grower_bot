@@ -9,7 +9,6 @@ use serenity::all::{
 };
 use serenity::model::id::UserId;
 use serenity::prelude::*;
-use crate::commands::escape_markdown;
 
 /// Selects a random winner index from the list of active users.
 pub fn choose_dotd_winner<R: Rng>(rng: &mut R, active_users_len: usize) -> usize {
@@ -205,19 +204,6 @@ pub async fn handle_dotd_command(
 
     let winner_mention = winner_user.mention();
 
-    // Fun titles based on length
-    let title = if winner.length + bonus <= 10 {
-        "Tiny but Mighty"
-    } else if winner.length + bonus <= 20 {
-        "Rising Star"
-    } else if winner.length + bonus <= 40 {
-        "Impressive Member"
-    } else if winner.length + bonus <= 60 {
-        "Legendary Organ"
-    } else {
-        "GOD OF SCHLONGS"
-    };
-
     // Get winner's position in server top
     let winner_total_length = winner.length + bonus;
     let position = match sqlx::query!(
@@ -228,9 +214,12 @@ pub async fn handle_dotd_command(
     .fetch_one(&bot.database)
     .await
     {
-        Ok(record) => record.pos + 1,
+        Ok(record) => (record.pos + 1) as usize,
         Err(_) => 0,
     };
+
+    // Fun titles based on server rank
+    let title = crate::utils::get_fun_title_by_rank(position);
 
     // Calculate next DOTD time (cooldown)
     let next_dotd_unix = (chrono::Utc::now() + chrono::Duration::days(1)).timestamp();

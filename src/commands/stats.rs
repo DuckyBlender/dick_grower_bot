@@ -138,6 +138,7 @@ pub async fn handle_stats_command(
     };
 
     // Funny comment based on length
+    let fun_title = crate::utils::get_fun_title_by_rank(rank as usize);
     let length_comment = if user_stats.length <= 0 {
         if is_self {
             "Your dick is practically an innie at this point. Keep trying!"
@@ -157,8 +158,6 @@ pub async fn handle_stats_command(
     };
 
     let escaped_target_name = escape_markdown(&target_user.name);
-    let title = format!("🍆 {}'s Dick Stats", escaped_target_name);
-
     let description = if is_self {
         "Here's everything you wanted to know about your cucumber (and probably some things you didn't):".to_string()
     } else {
@@ -178,11 +177,12 @@ pub async fn handle_stats_command(
         CreateInteractionResponseMessage::new()
             .add_embed(
                 CreateEmbed::new()
-                    .title(title)
+                    .title(format!("🍆 {}'s Dick Stats", escaped_target_name))
                     .description(description)
                     .color(0x9B59B6) // Purple
                     .field("Current Length", format!("**{} cm**", user_stats.length), true)
                     .field("Server Rank", format!("**#{}**", rank), true)
+                    .field("Title", fun_title, true)
                     .field(
                         "Dick of the Day",
                         format!("**{} time(s)**", user_stats.dick_of_day_count),
