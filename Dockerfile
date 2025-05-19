@@ -4,7 +4,9 @@ WORKDIR /app
 
 # Planner stage - create recipe.json for dependencies
 FROM chef AS planner
-COPY . .
+# Copy manifests and src for dependency resolution
+COPY Cargo.toml Cargo.lock ./
+COPY src ./src
 RUN cargo chef prepare --recipe-path recipe.json
 
 # Builder stage with cached dependencies
@@ -23,7 +25,7 @@ WORKDIR /app
 COPY --from=planner /app/recipe.json recipe.json
 RUN cargo chef cook --release --recipe-path recipe.json
 
-# Now copy the actual source code
+# Now copy the actual source code (after dependencies are built)
 COPY . .
 
 # Create database directory

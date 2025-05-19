@@ -67,7 +67,6 @@ pub async fn handle_stats_command(
                             .description(msg)
                             .color(0xAAAAAA),
                     )
-                    .ephemeral(true),
             );
             return command.create_response(&ctx.http, builder).await;
         }
@@ -208,7 +207,6 @@ pub async fn handle_stats_command(
                     .thumbnail(target_user.face())
                     .footer(CreateEmbedFooter::new(footer_text)),
             )
-            .ephemeral(true),
     );
     command.create_response(&ctx.http, builder).await
 }
