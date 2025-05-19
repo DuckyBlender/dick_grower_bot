@@ -40,3 +40,18 @@ pub fn get_fun_title_by_rank(rank: usize) -> &'static str {
         _ => "Tiny but Mighty",
     }
 }
+
+pub fn ordinal_suffix(n: usize) -> &'static str {
+    let rem_100 = n % 100;
+    let rem_10 = n % 10;
+    if (11..=13).contains(&rem_100) {
+        "th"
+    } else {
+        match rem_10 {
+            1 => "st",
+            2 => "nd",
+            3 => "rd",
+            _ => "th",
+        }
+    }
+}

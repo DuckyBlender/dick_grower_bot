@@ -1,13 +1,13 @@
 use crate::Bot;
+use crate::commands::escape_markdown;
+use crate::utils::get_bot_stats;
 use log::error;
 use rand::seq::IndexedRandom;
 use serenity::all::{
     CommandInteraction, CreateEmbed, CreateEmbedFooter, CreateInteractionResponseFollowup,
 };
 use serenity::model::id::UserId;
-use crate::utils::get_bot_stats;
 use serenity::prelude::*;
-use crate::commands::escape_markdown;
 
 pub async fn handle_global_command(
     ctx: &Context,

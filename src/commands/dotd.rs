@@ -1,5 +1,6 @@
 use crate::Bot;
 use crate::time::check_utc_day_reset;
+use crate::utils::{get_fun_title_by_rank, ordinal_suffix};
 use chrono::NaiveDateTime;
 use log::{error, info};
 use rand::Rng;
@@ -40,7 +41,7 @@ pub async fn handle_dotd_command(
             let time_left = check_utc_day_reset(&last_dotd);
             let unix_timestamp = chrono::Utc::now().timestamp() + time_left.num_seconds();
             let discord_timestamp = format!("<t:{}:R>", unix_timestamp);
-            
+
             if !time_left.is_zero() {
                 let builder = CreateInteractionResponse::Message(
                     CreateInteractionResponseMessage::new()
@@ -128,14 +129,21 @@ pub async fn handle_dotd_command(
     }
 
     // Log all potential winners
-    info!("Potential DOTD candidates: {:?}", active_users.iter().map(|u| &u.user_id).collect::<Vec<_>>());
+    info!(
+        "Potential DOTD candidates: {:?}",
+        active_users.iter().map(|u| &u.user_id).collect::<Vec<_>>()
+    );
 
     // Select a random winner BEFORE any .await after this point
     let winner_idx = {
         let mut rng = rand::rng();
         choose_dotd_winner(&mut rng, active_users.len())
     };
-    info!("Generating a random number between 0 and {}: {}", active_users.len() - 1, winner_idx);
+    info!(
+        "Generating a random number between 0 and {}: {}",
+        active_users.len() - 1,
+        winner_idx
+    );
     let winner = &active_users[winner_idx];
 
     // Award bonus
@@ -219,7 +227,7 @@ pub async fn handle_dotd_command(
     };
 
     // Fun titles based on server rank
-    let title = crate::utils::get_fun_title_by_rank(position);
+    let title = get_fun_title_by_rank(position);
 
     // Calculate next DOTD time (cooldown)
     let next_dotd_unix = (chrono::Utc::now() + chrono::Duration::days(1)).timestamp();
@@ -233,8 +241,8 @@ pub async fn handle_dotd_command(
                     .title("🏆 Today's Dick of the Day! 🏆")
                     .color(0xFFD700) // Gold
                     .description(format!(
-                        "After careful consideration, the Dick of the Day award goes to... **{}**!\n\nThis \"**{}**\" has been awarded a bonus of **+{} cm**, bringing their total to **{} cm**!\n\nServer rank: **#{}**.\n\nNext Dick of the Day: {}\n\nCongratulations on your outstanding achievement in the field of... length!",
-                        winner_mention, title, bonus, winner.length + bonus, position, next_dotd_discord
+                        "After careful consideration, the Dick of the Day award goes to... **{}**!\n\nThis \"**{}**\" has been awarded a bonus of **+{} cm**, bringing their total to **{} cm**!\n\nYou are currently **#{}{}** in the server.\n\nNext Dick of the Day: {}\n\nCongratulations on your outstanding achievement in the field of... length!",
+                        winner_mention, title, bonus, winner.length + bonus, position, ordinal_suffix(position), next_dotd_discord
                     ))
                     .thumbnail(winner_user.face())
                     .footer(CreateEmbedFooter::new("Stay tuned for tomorrow's competition! (and don't forget to /grow)"))
@@ -261,7 +269,11 @@ mod tests {
         for (i, &count) in counts.iter().enumerate() {
             let percent = count as f64 / runs as f64;
             println!("User {}: {} times ({:.1}%)", i, count, percent * 100.0);
-            assert!(percent > 0.3, "User {} was chosen less than 30% of the time", i);
+            assert!(
+                percent > 0.3,
+                "User {} was chosen less than 30% of the time",
+                i
+            );
         }
     }
 }

@@ -1,5 +1,6 @@
 use crate::Bot;
 use crate::time::check_cooldown_minutes;
+use crate::utils::ordinal_suffix;
 use chrono::NaiveDateTime;
 use log::{error, info};
 use rand::Rng;
@@ -190,8 +191,12 @@ pub async fn handle_grow_command(
     .await
     {
         Ok(record) => record.pos + 1,
-        Err(_) => 0,
+        Err(_) => {
+            error!("Error fetching position");
+            0
+        }
     };
+    let position = position as usize; // Safe to cast to usize
 
     // Calculate next grow time (cooldown)
     let last_grow = chrono::Utc::now();
@@ -203,8 +208,12 @@ pub async fn handle_grow_command(
         (
             "🚀 INCREDIBLE GROWTH!",
             format!(
-                "Holy moly! Your dick just grew by **{} cm** and is now a whopping **{} cm** long!\nYou're now #{} in the server.\n\nNext attempt: {}\n\nCareful, you might trip over it soon!",
-                growth, new_length, position, next_grow_discord
+                "Holy moly! Your dick just grew by **{} cm** and is now a whopping **{} cm** long!\nYou are currently #{}{} in the server.\n\nNext attempt: {}\n\nCareful, you might trip over it soon!",
+                growth,
+                new_length,
+                position,
+                ordinal_suffix(position),
+                next_grow_discord
             ),
             0x00FF00, // Bright green
         )
@@ -212,8 +221,12 @@ pub async fn handle_grow_command(
         (
             "🔥 Impressive Growth!",
             format!(
-                "Nice! Your dick grew by **{} cm**! Your new length is **{} cm**.\nYou're now #{} in the server's leaderboard.\n\nNext attempt: {}\n\nKeep up the good work, size king!",
-                growth, new_length, position, next_grow_discord
+                "Nice! Your dick grew by **{} cm**! Your new length is **{} cm**.\nYou are currently #{}{} in the server's leaderboard.\n\nNext attempt: {}\n\nKeep up the good work, size king!",
+                growth,
+                new_length,
+                position,
+                ordinal_suffix(position),
+                next_grow_discord
             ),
             0x33FF33, // Green
         )
@@ -221,8 +234,12 @@ pub async fn handle_grow_command(
         (
             "🌱 Growth Achieved",
             format!(
-                "A modest **{} cm** added. You're now at **{} cm**.\nServer rank: #{}.\n\nNext attempt: {}\n\nEvery centimeter counts!",
-                growth, new_length, position, next_grow_discord
+                "A modest **{} cm** added. You're now at **{} cm**.\nYou are currently #{}{} in the server.\n\nNext attempt: {}\n\nEvery centimeter counts!",
+                growth,
+                new_length,
+                position,
+                ordinal_suffix(position),
+                next_grow_discord
             ),
             0x66FF66, // Light green
         )
@@ -230,8 +247,12 @@ pub async fn handle_grow_command(
         (
             "📉 Minor Shrinkage",
             format!(
-                "Oof! Your dick shrank by **{} cm**. You're now at **{} cm**.\nRank: #{}.\n\nNext attempt: {}\n\nDon't worry, it happens to everyone (probably).",
-                -growth, new_length, position, next_grow_discord
+                "Oof! Your dick shrank by **{} cm**. You're now at **{} cm**.\nYou are currently #{}{} in the server.\n\nNext attempt: {}\n\nDon't worry, it happens to everyone (probably).",
+                -growth,
+                new_length,
+                position,
+                ordinal_suffix(position),
+                next_grow_discord
             ),
             0xFF9933, // Orange
         )
@@ -239,8 +260,12 @@ pub async fn handle_grow_command(
         (
             "💀 CATASTROPHIC SHRINKAGE!",
             format!(
-                "DISASTER! Your dick shrank by **{} cm**. You're now at **{} cm**.\nRank: #{}.\n\nNext attempt: {}\n\nMaybe try some herbal tea?",
-                -growth, new_length, position, next_grow_discord
+                "DISASTER! Your dick shrank by **{} cm**. You're now at **{} cm**.\nYou are currently #{}{} in the server.\n\nNext attempt: {}\n\nMaybe try some herbal tea?",
+                -growth,
+                new_length,
+                position,
+                ordinal_suffix(position),
+                next_grow_discord
             ),
             0xFF3333, // Red
         )

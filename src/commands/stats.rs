@@ -1,5 +1,7 @@
 use crate::Bot;
+use crate::commands::escape_markdown;
 use crate::time::check_cooldown_minutes;
+use crate::utils::{get_fun_title_by_rank, ordinal_suffix};
 use chrono::NaiveDateTime;
 use log::error;
 use serenity::all::{
@@ -7,7 +9,6 @@ use serenity::all::{
     CreateInteractionResponseMessage,
 };
 use serenity::prelude::*;
-use crate::commands::escape_markdown;
 
 pub async fn handle_stats_command(
     ctx: &Context,
@@ -60,13 +61,12 @@ pub async fn handle_stats_command(
             };
 
             let builder = CreateInteractionResponse::Message(
-                CreateInteractionResponseMessage::new()
-                    .add_embed(
-                        CreateEmbed::new()
-                            .title("❓ No Stats Found")
-                            .description(msg)
-                            .color(0xAAAAAA),
-                    )
+                CreateInteractionResponseMessage::new().add_embed(
+                    CreateEmbed::new()
+                        .title("❓ No Stats Found")
+                        .description(msg)
+                        .color(0xAAAAAA),
+                ),
             );
             return command.create_response(&ctx.http, builder).await;
         }
@@ -105,6 +105,7 @@ pub async fn handle_stats_command(
             0
         }
     };
+    let rank = rank as usize; // Safe to cast to usize
 
     // Calculate growth status - only show for own user
     let last_grow = NaiveDateTime::parse_from_str(&user_stats.last_grow, "%Y-%m-%d %H:%M:%S")
@@ -119,9 +120,7 @@ pub async fn handle_stats_command(
         if time_left.is_zero() {
             "✅ You can grow now! Use /grow".to_string()
         } else {
-            format!(
-                "⏰ Next growth in: {discord_timestamp}",
-            )
+            format!("⏰ Next growth in: {discord_timestamp}",)
         }
     } else if time_left.is_zero() {
         "✅ Can grow now".to_string()
@@ -138,7 +137,7 @@ pub async fn handle_stats_command(
     };
 
     // Funny comment based on length
-    let fun_title = crate::utils::get_fun_title_by_rank(rank as usize);
+    let fun_title = get_fun_title_by_rank(rank);
     let length_comment = if user_stats.length <= 0 {
         if is_self {
             "Your dick is practically an innie at this point. Keep trying!"
@@ -181,7 +180,7 @@ pub async fn handle_stats_command(
                     .description(description)
                     .color(0x9B59B6) // Purple
                     .field("Current Length", format!("**{} cm**", user_stats.length), true)
-                    .field("Server Rank", format!("**#{}**", rank), true)
+                    .field("Server Rank", format!("**#{}{}**", rank, ordinal_suffix(rank)), true)
                     .field("Title", fun_title, true)
                     .field(
                         "Dick of the Day",
