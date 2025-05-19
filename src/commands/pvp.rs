@@ -1,4 +1,5 @@
 use crate::Bot;
+use crate::escape_markdown;
 use chrono::Duration;
 use log::{error, info};
 use rand::Rng;
@@ -10,7 +11,6 @@ use serenity::model::id::UserId;
 use serenity::prelude::*;
 use std::cmp::Ordering;
 use std::time::{SystemTime, UNIX_EPOCH};
-use crate::escape_markdown;
 
 pub struct PvpChallenge {
     bet: i64,
@@ -161,25 +161,13 @@ pub async fn handle_pvp_command(
 
     // Add bet_comment as a field in the challenge embed
     let bet_comment = if bet >= 100 {
-        format!(
-            "🤯 **LEGENDARY BET!** {} cm",
-            bet
-        )
+        format!("🤯 **LEGENDARY BET!** {} cm", bet)
     } else if bet >= 50 {
-        format!(
-            "💰 **MASSIVE BET!** {} cm",
-            bet
-        )
+        format!("💰 **MASSIVE BET!** {} cm", bet)
     } else if bet >= 30 {
-        format!(
-            "💰 A **huge {} cm bet**!",
-            bet
-        )
+        format!("💰 A **huge {} cm bet**!", bet)
     } else if bet >= 15 {
-        format!(
-            "💰 A solid **{} cm bet**",
-            bet
-        )
+        format!("💰 A solid **{} cm bet**", bet)
     } else {
         String::new() // No special comment for smaller bets
     };
@@ -662,46 +650,44 @@ pub async fn handle_pvp_accept(
         )
     };
 
-    component.create_response(
-        &ctx.http,
-        CreateInteractionResponse::UpdateMessage(
-            CreateInteractionResponseMessage::new()
-                .add_embed(
-                    CreateEmbed::new()
-                        .title("🏆 Dick Battle Results!")
-                        .description(format!(
-                            "👑 {} won **{} cm**!{}",
-                            winner_id.mention(), bet, streak_comment
-                        ))
-                        .field(
-                            "New Lengths",
-                            format!(
-                                "• 👑 {}: {} cm\n• {}: {} cm",
-                                winner_name, winner_length,
-                                loser_name, loser_length
-                            ),
-                            false
-                        )
-                        .field(
-                            "Rolls",
-                            format!(
-                                "• 👑 {}: {}\n• {}: {}",
-                                winner_name, winner_roll,
-                                loser_name, loser_roll
-                            ),
-                            false
-                        )
-                        .field(
-                            "Conclusion",
-                            taunt,
-                            false
-                        )
-                        .color(0x2ECC71)
-                        .footer(CreateEmbedFooter::new("Size DOES matter after all!")),
-                )
-                .components(vec![]),
-        ),
-    ).await?;
+    component
+        .create_response(
+            &ctx.http,
+            CreateInteractionResponse::UpdateMessage(
+                CreateInteractionResponseMessage::new()
+                    .add_embed(
+                        CreateEmbed::new()
+                            .title("🏆 Dick Battle Results!")
+                            .description(format!(
+                                "👑 {} won **{} cm**!{}",
+                                winner_id.mention(),
+                                bet,
+                                streak_comment
+                            ))
+                            .field(
+                                "New Lengths",
+                                format!(
+                                    "• 👑 {}: {} cm\n• {}: {} cm",
+                                    winner_name, winner_length, loser_name, loser_length
+                                ),
+                                false,
+                            )
+                            .field(
+                                "Rolls",
+                                format!(
+                                    "• 👑 {}: {}\n• {}: {}",
+                                    winner_name, winner_roll, loser_name, loser_roll
+                                ),
+                                false,
+                            )
+                            .field("Conclusion", taunt, false)
+                            .color(0x2ECC71)
+                            .footer(CreateEmbedFooter::new("Size DOES matter after all!")),
+                    )
+                    .components(vec![]),
+            ),
+        )
+        .await?;
 
     Ok(())
 }

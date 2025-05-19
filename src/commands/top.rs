@@ -1,4 +1,5 @@
 use crate::Bot;
+use crate::commands::escape_markdown;
 use log::error;
 use serenity::all::{
     CommandInteraction, CreateEmbed, CreateEmbedFooter, CreateInteractionResponse,
@@ -6,7 +7,6 @@ use serenity::all::{
 };
 use serenity::model::id::UserId;
 use serenity::prelude::*;
-use crate::commands::escape_markdown; 
 
 pub async fn handle_top_command(
     ctx: &Context,
