@@ -212,7 +212,7 @@ pub async fn handle_grow_command(
         (
             "🔥 Impressive Growth!",
             format!(
-                "Nice! You gained **{} cm**! Your new length is **{} cm**.\nYou're now #{} in the server's leaderboard.\n\nNext attempt: {}\n\nKeep up the good work, size king!",
+                "Nice! Your dick grew by **{} cm**! Your new length is **{} cm**.\nYou're now #{} in the server's leaderboard.\n\nNext attempt: {}\n\nKeep up the good work, size king!",
                 growth, new_length, position, next_grow_discord
             ),
             0x33FF33, // Green
@@ -230,7 +230,7 @@ pub async fn handle_grow_command(
         (
             "📉 Minor Shrinkage",
             format!(
-                "Oof! Lost **{} cm**. You're now at **{} cm**.\nRank: #{}.\n\nNext attempt: {}\n\nDon't worry, it happens to everyone (probably).",
+                "Oof! Your dick shrank by **{} cm**. You're now at **{} cm**.\nRank: #{}.\n\nNext attempt: {}\n\nDon't worry, it happens to everyone (probably).",
                 -growth, new_length, position, next_grow_discord
             ),
             0xFF9933, // Orange
@@ -239,7 +239,7 @@ pub async fn handle_grow_command(
         (
             "💀 CATASTROPHIC SHRINKAGE!",
             format!(
-                "DISASTER! Lost **{} cm**. You're now at **{} cm**.\nRank: #{}.\n\nNext attempt: {}\n\nMaybe try some herbal tea?",
+                "DISASTER! Your dick shrank by **{} cm**. You're now at **{} cm**.\nRank: #{}.\n\nNext attempt: {}\n\nMaybe try some herbal tea?",
                 -growth, new_length, position, next_grow_discord
             ),
             0xFF3333, // Red
