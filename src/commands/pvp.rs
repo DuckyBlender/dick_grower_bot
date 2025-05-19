@@ -613,15 +613,6 @@ pub async fn handle_pvp_accept(
         String::new()
     };
 
-    // Determine if winner is first or last in the field
-    let (winner_crown_left, winner_crown_right) = if winner_length > loser_length {
-        ("👑 ", "")
-    } else if winner_length < loser_length {
-        ("", " 👑")
-    } else {
-        ("", "")
-    };
-
     // Create a funny taunt based on margin of victory and bet size
     let taunt = if winner_roll - loser_roll > 50 {
         if bet >= 30 {
@@ -679,29 +670,29 @@ pub async fn handle_pvp_accept(
                     CreateEmbed::new()
                         .title("🏆 Dick Battle Results!")
                         .description(format!(
-                            "{} won **{} cm**!{}",
+                            "👑 {} won **{} cm**!{}",
                             winner_id.mention(), bet, streak_comment
                         ))
                         .field(
                             "New Lengths",
                             format!(
-                                "• {}{}: {} cm\n• {}{}: {} cm",
-                                winner_crown_left, winner_name, winner_length,
-                                loser_name, winner_crown_right, loser_length
+                                "• 👑 {}: {} cm\n• {}: {} cm",
+                                winner_name, winner_length,
+                                loser_name, loser_length
                             ),
                             false
                         )
                         .field(
                             "Rolls",
                             format!(
-                                "{}: {}\n{}: {}",
+                                "• 👑 {}: {}\n• {}: {}",
                                 winner_name, winner_roll,
                                 loser_name, loser_roll
                             ),
                             false
                         )
                         .field(
-                            "Taunt",
+                            "Conclusion",
                             taunt,
                             false
                         )
