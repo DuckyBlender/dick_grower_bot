@@ -154,8 +154,10 @@ pub async fn handle_global_command(
                 .description(description)
                 .color(0x9B59B6) // Purple
                 .footer(CreateEmbedFooter::new(
-                    format!("🌐 {} servers | 🍆 {} total dicks | World domination starts with your dick. /grow every day!", 
-                        server_count_str, dick_count_str)
+                    format!(
+                        "🌐 {} servers | 🍆 {} total dicks | World domination starts with your dick. Start growing today with /grow!",
+                        server_count_str, dick_count_str
+                    )
                 )),
         ),
     ).await?;

@@ -208,20 +208,37 @@ pub async fn handle_dotd_command(
         "GOD OF SCHLONGS"
     };
 
+    // Get winner's position in server top
+    let winner_total_length = winner.length + bonus;
+    let position = match sqlx::query!(
+        "SELECT COUNT(*) as pos FROM dicks WHERE guild_id = ? AND length > ?",
+        guild_id,
+        winner_total_length
+    )
+    .fetch_one(&bot.database)
+    .await
+    {
+        Ok(record) => record.pos + 1,
+        Err(_) => 0,
+    };
+
+    // Calculate next DOTD time (cooldown)
+    let next_dotd_unix = (chrono::Utc::now() + chrono::Duration::days(1)).timestamp();
+    let next_dotd_discord = format!("<t:{}:R>", next_dotd_unix);
+
     let builder = CreateInteractionResponse::Message(
         CreateInteractionResponseMessage::new()
-            // mention the winner, so they get a notification
             .content(winner_mention.to_string())
             .add_embed(
                 CreateEmbed::new()
                     .title("🏆 Today's Dick of the Day! 🏆")
                     .color(0xFFD700) // Gold
                     .description(format!(
-                        "After careful consideration, the Dick of the Day award goes to... **{}**!\n\nThis \"**{}**\" has been awarded a bonus of **+{} cm**, bringing their total to **{} cm**!\n\nCongratulations on your outstanding achievement in the field of... length!",
-                        winner_name_escaped, title, bonus, winner.length + bonus
+                        "After careful consideration, the Dick of the Day award goes to... **{}**!\n\nThis \"**{}**\" has been awarded a bonus of **+{} cm**, bringing their total to **{} cm**!\n\nServer rank: #{}.\n\nNext Dick of the Day: {}\n\nCongratulations on your outstanding achievement in the field of... length!",
+                        winner_name_escaped, title, bonus, winner.length + bonus, position, next_dotd_discord
                     ))
                     .thumbnail(winner_user.face())
-                    .footer(CreateEmbedFooter::new("Stay tuned for tomorrow's competition!"))
+                    .footer(CreateEmbedFooter::new("Stay tuned for tomorrow's competition! (and don't forget to /grow)"))
             )
     );
     return command.create_response(&ctx.http, builder).await;
