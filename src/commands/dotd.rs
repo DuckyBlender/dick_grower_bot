@@ -204,7 +204,6 @@ pub async fn handle_dotd_command(
     };
 
     let winner_mention = winner_user.mention();
-    let winner_name_escaped = escape_markdown(&winner_user.name);
 
     // Fun titles based on length
     let title = if winner.length + bonus <= 10 {
@@ -245,8 +244,8 @@ pub async fn handle_dotd_command(
                     .title("🏆 Today's Dick of the Day! 🏆")
                     .color(0xFFD700) // Gold
                     .description(format!(
-                        "After careful consideration, the Dick of the Day award goes to... **{}**!\n\nThis \"**{}**\" has been awarded a bonus of **+{} cm**, bringing their total to **{} cm**!\n\nServer rank: #{}.\n\nNext Dick of the Day: {}\n\nCongratulations on your outstanding achievement in the field of... length!",
-                        winner_name_escaped, title, bonus, winner.length + bonus, position, next_dotd_discord
+                        "After careful consideration, the Dick of the Day award goes to... **{}**!\n\nThis \"**{}**\" has been awarded a bonus of **+{} cm**, bringing their total to **{} cm**!\n\nServer rank: **#{}**.\n\nNext Dick of the Day: {}\n\nCongratulations on your outstanding achievement in the field of... length!",
+                        winner_mention, title, bonus, winner.length + bonus, position, next_dotd_discord
                     ))
                     .thumbnail(winner_user.face())
                     .footer(CreateEmbedFooter::new("Stay tuned for tomorrow's competition! (and don't forget to /grow)"))
