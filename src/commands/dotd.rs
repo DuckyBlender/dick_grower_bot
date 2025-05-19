@@ -11,6 +11,11 @@ use serenity::model::id::UserId;
 use serenity::prelude::*;
 use crate::commands::escape_markdown;
 
+/// Selects a random winner index from the list of active users.
+pub fn choose_dotd_winner<R: Rng>(rng: &mut R, active_users_len: usize) -> usize {
+    rng.random_range(0..active_users_len)
+}
+
 pub async fn handle_dotd_command(
     ctx: &Context,
     command: &CommandInteraction,
@@ -123,12 +128,18 @@ pub async fn handle_dotd_command(
         return command.create_response(&ctx.http, builder).await;
     }
 
-    // Select a random winner
-    let winner_idx = rand::rng().random_range(0..active_users.len());
+    // Log all potential winners
+    info!("Potential DOTD candidates: {:?}", active_users.iter().map(|u| &u.user_id).collect::<Vec<_>>());
+
+    // Select a random winner BEFORE any .await after this point
+    let winner_idx = {
+        let mut rng = rand::rng();
+        choose_dotd_winner(&mut rng, active_users.len())
+    };
     info!("Generating a random number between 0 and {}: {}", active_users.len() - 1, winner_idx);
     let winner = &active_users[winner_idx];
 
-    // Award bonus (5-10 cm - more than the automated nightly event)
+    // Award bonus
     let bonus = rand::rng().random_range(10..=25);
 
     // Update DB
@@ -242,4 +253,27 @@ pub async fn handle_dotd_command(
             )
     );
     return command.create_response(&ctx.http, builder).await;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rand::SeedableRng;
+    use rand::rngs::StdRng;
+
+    #[test]
+    fn test_choose_dotd_winner_distribution() {
+        let mut counts = [0; 3];
+        let mut rng = StdRng::seed_from_u64(42);
+        let runs = 1000;
+        for _ in 0..runs {
+            let idx = choose_dotd_winner(&mut rng, 3);
+            counts[idx] += 1;
+        }
+        for (i, &count) in counts.iter().enumerate() {
+            let percent = count as f64 / runs as f64;
+            println!("User {}: {} times ({:.1}%)", i, count, percent * 100.0);
+            assert!(percent > 0.3, "User {} was chosen less than 30% of the time", i);
+        }
+    }
 }
