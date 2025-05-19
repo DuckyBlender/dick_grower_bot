@@ -180,13 +180,31 @@ pub async fn handle_grow_command(
         }
     };
 
+    // Get user position in server top
+    let position = match sqlx::query!(
+        "SELECT COUNT(*) as pos FROM dicks WHERE guild_id = ? AND length > ?",
+        guild_id,
+        new_length
+    )
+    .fetch_one(&bot.database)
+    .await
+    {
+        Ok(record) => record.pos + 1,
+        Err(_) => 0,
+    };
+
+    // Calculate next grow time (cooldown)
+    let last_grow = chrono::Utc::now();
+    let next_grow_unix = (last_grow + chrono::Duration::minutes(60)).timestamp();
+    let next_grow_discord = format!("<t:{}:R>", next_grow_unix);
+
     // Create response with funny messages based on growth
     let (title, description, color) = if growth > 7 {
         (
             "🚀 INCREDIBLE GROWTH!",
             format!(
-                "Holy moly! Your dick grew by **{} cm**!\nYour new length: **{} cm**\n\nThat's some supernatural growth! Are you using some kind of black magic?",
-                growth, new_length
+                "Holy moly! Your dick just grew by **{} cm** and is now a whopping **{} cm** long!\nYou're now #{} in the server.\n\nNext attempt: {}\n\nCareful, you might trip over it soon!",
+                growth, new_length, position, next_grow_discord
             ),
             0x00FF00, // Bright green
         )
@@ -194,8 +212,8 @@ pub async fn handle_grow_command(
         (
             "🔥 Impressive Growth!",
             format!(
-                "Nice! Your dick grew by **{} cm**!\nYour new length: **{} cm**\n\nKeep it up, that's some serious growth!",
-                growth, new_length
+                "Nice! You gained **{} cm**! Your new length is **{} cm**.\nYou're now #{} in the server's leaderboard.\n\nNext attempt: {}\n\nKeep up the good work, size king!",
+                growth, new_length, position, next_grow_discord
             ),
             0x33FF33, // Green
         )
@@ -203,8 +221,8 @@ pub async fn handle_grow_command(
         (
             "🌱 Growth Achieved",
             format!(
-                "Your dick grew by **{} cm**.\nYour new length: **{} cm**\n\nSlow and steady wins the race, right?",
-                growth, new_length
+                "A modest **{} cm** added. You're now at **{} cm**.\nServer rank: #{}.\n\nNext attempt: {}\n\nEvery centimeter counts!",
+                growth, new_length, position, next_grow_discord
             ),
             0x66FF66, // Light green
         )
@@ -212,18 +230,17 @@ pub async fn handle_grow_command(
         (
             "📉 Minor Shrinkage",
             format!(
-                "Uh oh! Your dick shrank by **{} cm**.\nYour new length: **{} cm**\n\nDid you take a cold shower?",
-                -growth, new_length
+                "Oof! Lost **{} cm**. You're now at **{} cm**.\nRank: #{}.\n\nNext attempt: {}\n\nDon't worry, it happens to everyone (probably).",
+                -growth, new_length, position, next_grow_discord
             ),
             0xFF9933, // Orange
         )
-        // impossible to get 0 growth
     } else {
         (
             "💀 CATASTROPHIC SHRINKAGE!",
             format!(
-                "DISASTER! Your dick shrank by **{} cm**!\nYour new length: **{} cm**\n\nWhatever you're doing, STOP IMMEDIATELY!",
-                -growth, new_length
+                "DISASTER! Lost **{} cm**. You're now at **{} cm**.\nRank: #{}.\n\nNext attempt: {}\n\nMaybe try some herbal tea?",
+                -growth, new_length, position, next_grow_discord
             ),
             0xFF3333, // Red
         )

@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT COUNT(*) as pos FROM dicks WHERE guild_id = ? AND length > ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "pos",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "409a864463ed93140c1ecde1eb35ecfd39555c7239aae8e8f9b617b2ca358a99"
+}

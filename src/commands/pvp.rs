@@ -159,6 +159,31 @@ pub async fn handle_pvp_command(
         "A cautious bet. Not everyone's ready to risk their precious centimeters!"
     };
 
+    // Add bet_comment as a field in the challenge embed
+    let bet_comment = if bet >= 100 {
+        format!(
+            "🤯 **LEGENDARY BET!** {} cm",
+            bet
+        )
+    } else if bet >= 50 {
+        format!(
+            "💰 **MASSIVE BET!** {} cm",
+            bet
+        )
+    } else if bet >= 30 {
+        format!(
+            "💰 A **huge {} cm bet**!",
+            bet
+        )
+    } else if bet >= 15 {
+        format!(
+            "💰 A solid **{} cm bet**",
+            bet
+        )
+    } else {
+        String::new() // No special comment for smaller bets
+    };
+
     let builder = CreateInteractionResponse::Message(
         CreateInteractionResponseMessage::new()
             .add_embed(
@@ -168,6 +193,11 @@ pub async fn handle_pvp_command(
                         "**{}** has started a dick battle!\n\nBet amount: **{} cm**\n\n{}\n\nAnyone can accept this challenge by clicking the button below",
                         challenger, bet, bet_description
                     ))
+                    .field(
+                        "Bet Commentary",
+                        bet_comment,
+                        false
+                    )
                     .color(0x3498DB) // Blue
                     .footer(CreateEmbedFooter::new("May the strongest dong win!")),
             )
@@ -568,6 +598,30 @@ pub async fn handle_pvp_accept(
         Err(_) => 0,
     };
 
+    // Streak comment
+    let streak_comment = if new_winner_streak >= 5 {
+        format!(
+            "\n\n🔥 **{}** is on a **{}-win streak**! Absolutely dominating! 👑",
+            winner_name, new_winner_streak
+        )
+    } else if new_winner_streak >= 3 {
+        format!(
+            "\n\n🔥 **{}** is on a **{}-win streak**! 📈",
+            winner_name, new_winner_streak
+        )
+    } else {
+        String::new()
+    };
+
+    // Determine if winner is first or last in the field
+    let (winner_crown_left, winner_crown_right) = if winner_length > loser_length {
+        ("👑 ", "")
+    } else if winner_length < loser_length {
+        ("", " 👑")
+    } else {
+        ("", "")
+    };
+
     // Create a funny taunt based on margin of victory and bet size
     let taunt = if winner_roll - loser_roll > 50 {
         if bet >= 30 {
@@ -617,43 +671,6 @@ pub async fn handle_pvp_accept(
         )
     };
 
-    // Add a comment on the size of the bet
-    let bet_comment = if bet >= 50 {
-        format!(
-            "\n\n💰 **MASSIVE BET!** {} cm is roughly a week's worth of growth! Talk about high stakes!",
-            bet
-        )
-    } else if bet >= 30 {
-        format!(
-            "\n\n💰 A **huge {} cm bet**! That's several days of growth on the line!",
-            bet
-        )
-    } else if bet >= 15 {
-        format!(
-            "\n\n💰 A solid **{} cm bet** - more than a day's worth of growth!",
-            bet
-        )
-    } else if bet >= 10 {
-        "\n\n💰 A respectable wager, putting a full day's growth at stake!".to_string()
-    } else {
-        "".to_string() // No special comment for smaller bets
-    };
-
-    // Streak comment
-    let streak_comment = if new_winner_streak >= 5 {
-        format!(
-            "\n\n🔥 **{}** is on a **{}-win streak**! Absolutely dominating! 👑",
-            winner_name, new_winner_streak
-        )
-    } else if new_winner_streak >= 3 {
-        format!(
-            "\n\n🔥 **{}** is on a **{}-win streak**! 📈",
-            winner_name, new_winner_streak
-        )
-    } else {
-        "".to_string()
-    };
-
     component.create_response(
         &ctx.http,
         CreateInteractionResponse::UpdateMessage(
@@ -662,23 +679,34 @@ pub async fn handle_pvp_accept(
                     CreateEmbed::new()
                         .title("🏆 Dick Battle Results!")
                         .description(format!(
-                            "{} won **{} cm**\n\n• {} rolled **{}**\n• {} rolled **{}**\n\n**New Lengths:**\n• {}: {} cm\n• {}: {} cm",
-                            winner_id.mention(), bet,
-                            challenger, challenger_roll,
-                            challenged, challenged_roll,
-                            winner_name, winner_length,
-                            loser_name, loser_length,
+                            "{} won **{} cm**!{}",
+                            winner_id.mention(), bet, streak_comment
                         ))
-                        .color(0x2ECC71)
-                        .footer(CreateEmbedFooter::new("Size DOES matter after all!"))
                         .field(
-                            "Summary",
+                            "New Lengths",
                             format!(
-                                "{}{}{}",
-                                taunt, bet_comment, streak_comment
-                            ).trim(),
-                            false,
+                                "• {}{}: {} cm\n• {}{}: {} cm",
+                                winner_crown_left, winner_name, winner_length,
+                                loser_name, winner_crown_right, loser_length
+                            ),
+                            false
                         )
+                        .field(
+                            "Rolls",
+                            format!(
+                                "{}: {}\n{}: {}",
+                                winner_name, winner_roll,
+                                loser_name, loser_roll
+                            ),
+                            false
+                        )
+                        .field(
+                            "Taunt",
+                            taunt,
+                            false
+                        )
+                        .color(0x2ECC71)
+                        .footer(CreateEmbedFooter::new("Size DOES matter after all!")),
                 )
                 .components(vec![]),
         ),
