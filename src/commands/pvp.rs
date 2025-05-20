@@ -132,11 +132,8 @@ pub async fn handle_pvp_command(
         },
     );
 
-    // Get challenger username
-    let challenger = match ctx.http.get_user(challenger_id).await {
-        Ok(user) => escape_markdown(&user.name),
-        Err(_) => "Unknown User".to_string(),
-    };
+    // Get challenger mention (always mention, don't use username)
+    let challenger_mention = challenger_id.mention();
 
     // Create accept button
     let accept_button = CreateButton::new(format!("pvp_accept:{}", challenger_id))
@@ -159,7 +156,7 @@ pub async fn handle_pvp_command(
         "A cautious bet. Not everyone's ready to risk their precious centimeters!"
     };
 
-    // Add bet_comment as a field in the challenge embed
+    // Compose bet_comment as the first line of the description
     let bet_comment = if bet >= 100 {
         format!("🤯 **LEGENDARY BET!** {} cm", bet)
     } else if bet >= 50 {
@@ -172,22 +169,26 @@ pub async fn handle_pvp_command(
         String::new() // No special comment for smaller bets
     };
 
+    // Build the embed description
+    let mut description = String::new();
+    if !bet_comment.is_empty() {
+        description.push_str(&format!("{}\n\n", bet_comment));
+    }
+    description.push_str(&format!(
+        "{} has started a dick battle!\n\nBet amount: **{} cm**\n\n{}",
+        challenger_mention, bet, bet_description
+    ));
+
     let builder = CreateInteractionResponse::Message(
         CreateInteractionResponseMessage::new()
             .add_embed(
                 CreateEmbed::new()
                     .title("🥊 Dick Battle!")
-                    .description(format!(
-                        "**{}** has started a dick battle!\n\nBet amount: **{} cm**\n\n{}\n\nAnyone can accept this challenge by clicking the button below",
-                        challenger, bet, bet_description
-                    ))
-                    .field(
-                        "Bet Commentary",
-                        bet_comment,
-                        false
-                    )
+                    .description(description)
                     .color(0x3498DB) // Blue
-                    .footer(CreateEmbedFooter::new("May the strongest dong win!")),
+                    .footer(CreateEmbedFooter::new(
+                        "Anyone can accept this challenge by clicking the button below. May the strongest dong win!"
+                    )),
             )
             .components(components),
     );
@@ -429,33 +430,34 @@ pub async fn handle_pvp_accept(
     // Drop the lock before making async calls
     drop(pvp_challenges);
 
-    // Get usernames
+    // Get usernames and mentions
+    let challenger_mention = challenger_id.mention();
+    let challenged_mention = challenged_id.mention();
     let challenger = match ctx.http.get_user(challenger_id).await {
         Ok(user) => escape_markdown(&user.name),
         Err(_) => "Unknown User".to_string(),
     };
-
     let challenged = escape_markdown(&component.user.name);
 
     // Roll for both users
     let challenger_roll = rand::rng().random_range(1..=100);
     let challenged_roll = rand::rng().random_range(1..=100);
 
-    let (winner_id, loser_id, winner_name, loser_name, winner_roll, loser_roll) =
+    let (winner_id, loser_id, winner_mention, loser_mention, winner_roll, loser_roll) =
         match challenger_roll.cmp(&challenged_roll) {
             Ordering::Greater => (
                 challenger_id,
                 challenged_id,
-                challenger.clone(),
-                challenged.clone(),
+                challenger_mention,
+                challenged_mention,
                 challenger_roll,
                 challenged_roll,
             ),
             Ordering::Less => (
                 challenged_id,
                 challenger_id,
-                challenged.clone(),
-                challenger.clone(),
+                challenged_mention,
+                challenger_mention,
                 challenged_roll,
                 challenger_roll,
             ),
@@ -589,13 +591,13 @@ pub async fn handle_pvp_accept(
     // Streak comment
     let streak_comment = if new_winner_streak >= 5 {
         format!(
-            "\n\n🔥 **{}** is on a **{}-win streak**! Absolutely dominating! 👑",
-            winner_name, new_winner_streak
+            "\n\n🔥 {} is on a **{}-win streak**! Absolutely dominating! 👑",
+            winner_mention, new_winner_streak
         )
     } else if new_winner_streak >= 3 {
         format!(
-            "\n\n🔥 **{}** is on a **{}-win streak**! 📈",
-            winner_name, new_winner_streak
+            "\n\n🔥 {} is on a **{}-win streak**! 📈",
+            winner_mention, new_winner_streak
         )
     } else {
         String::new()
@@ -606,47 +608,47 @@ pub async fn handle_pvp_accept(
         if bet >= 30 {
             format!(
                 "💀 It wasn't even close! {}'s dick absolutely DEMOLISHED {}'s in a historic beatdown! Those {} centimeters will be remembered for generations! 📜",
-                winner_name, loser_name, bet
+                winner_mention, loser_mention, bet
             )
         } else {
             format!(
                 "💀 It wasn't even close! {}'s dick destroyed {}'s in an absolute massacre! ⚰️",
-                winner_name, loser_name
+                winner_mention, loser_mention
             )
         }
     } else if winner_roll - loser_roll > 20 {
         if bet >= 20 {
             format!(
                 "🏆 {}'s dick clearly outclassed {}'s in this epic showdown! That's {} cm of pride changing hands!",
-                winner_name, loser_name, bet
+                winner_mention, loser_mention, bet
             )
         } else {
             format!(
                 "🏆 {}'s dick clearly outclassed {}'s in this epic showdown!",
-                winner_name, loser_name
+                winner_mention, loser_mention
             )
         }
     } else if winner_roll - loser_roll > 5 {
         if bet >= 15 {
             format!(
                 "🥇 A close match, but {}'s dick had just enough extra length to claim victory and snatch those {} valuable centimeters!",
-                winner_name, bet
+                winner_mention, bet
             )
         } else {
             format!(
                 "🥇 A close match, but {}'s dick had just enough extra length to claim victory!",
-                winner_name
+                winner_mention
             )
         }
     } else if bet >= 25 {
         format!(
             "😱 WHAT A NAIL-BITER! {}'s dick barely edged out {}'s by a hair's width! Those {} centimeters were almost too close to call!",
-            winner_name, loser_name, bet
+            winner_mention, loser_mention, bet
         )
     } else {
         format!(
             "😮 That was incredibly close! {}'s dick barely edged out {}'s by a hair's width!",
-            winner_name, loser_name
+            winner_mention, loser_mention
         )
     };
 
@@ -660,25 +662,23 @@ pub async fn handle_pvp_accept(
                             .title("🏆 Dick Battle Results!")
                             .description(format!(
                                 "👑 {} won **{} cm**!{}",
-                                winner_id.mention(),
-                                bet,
-                                streak_comment
+                                winner_mention, bet, streak_comment
                             ))
                             .field(
                                 "New Lengths",
                                 format!(
                                     "• 👑 {}: {} cm\n• {}: {} cm",
-                                    winner_name, winner_length, loser_name, loser_length
+                                    winner_mention, winner_length, loser_mention, loser_length
                                 ),
-                                false,
+                                true,
                             )
                             .field(
                                 "Rolls",
                                 format!(
                                     "• 👑 {}: {}\n• {}: {}",
-                                    winner_name, winner_roll, loser_name, loser_roll
+                                    winner_mention, winner_roll, loser_mention, loser_roll
                                 ),
-                                false,
+                                true,
                             )
                             .field("Conclusion", taunt, false)
                             .color(0x2ECC71)

@@ -180,7 +180,7 @@ pub async fn handle_stats_command(
                     .description(description)
                     .color(0x9B59B6) // Purple
                     .field("Current Length", format!("**{} cm**", user_stats.length), true)
-                    .field("Server Rank", format!("**#{}{}**", rank, ordinal_suffix(rank)), true)
+                    .field("Server Rank", format!("**{}{}**", rank, ordinal_suffix(rank)), true)
                     .field("Title", fun_title, true)
                     .field(
                         "Dick of the Day",

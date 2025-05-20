@@ -208,7 +208,7 @@ pub async fn handle_grow_command(
         (
             "🚀 INCREDIBLE GROWTH!",
             format!(
-                "Holy moly! Your dick just grew by **{} cm** and is now a whopping **{} cm** long!\nYou are currently #{}{} in the server.\n\nNext attempt: {}\n\nCareful, you might trip over it soon!",
+                "Holy moly! Your dick just grew by **{} cm** and is now a whopping **{} cm** long!\nYou are currently **{}{}** in the server.\n\nNext attempt: {}\n\nCareful, you might trip over it soon!",
                 growth,
                 new_length,
                 position,
@@ -221,7 +221,7 @@ pub async fn handle_grow_command(
         (
             "🔥 Impressive Growth!",
             format!(
-                "Nice! Your dick grew by **{} cm**! Your new length is **{} cm**.\nYou are currently #{}{} in the server's leaderboard.\n\nNext attempt: {}\n\nKeep up the good work, size king!",
+                "Nice! Your dick grew by **{} cm**! Your new length is **{} cm**.\nYou are currently **{}{}** in the server's leaderboard.\n\nNext attempt: {}\n\nKeep up the good work, size king!",
                 growth,
                 new_length,
                 position,
@@ -234,7 +234,7 @@ pub async fn handle_grow_command(
         (
             "🌱 Growth Achieved",
             format!(
-                "A modest **{} cm** added. You're now at **{} cm**.\nYou are currently #{}{} in the server.\n\nNext attempt: {}\n\nEvery centimeter counts!",
+                "A modest **{} cm** added. You're now at **{} cm**.\nYou are currently **{}{}** in the server.\n\nNext attempt: {}\n\nEvery centimeter counts!",
                 growth,
                 new_length,
                 position,
@@ -247,7 +247,7 @@ pub async fn handle_grow_command(
         (
             "📉 Minor Shrinkage",
             format!(
-                "Oof! Your dick shrank by **{} cm**. You're now at **{} cm**.\nYou are currently #{}{} in the server.\n\nNext attempt: {}\n\nDon't worry, it happens to everyone (probably).",
+                "Oof! Your dick shrank by **{} cm**. You're now at **{} cm**.\nYou are currently **{}{}** in the server.\n\nNext attempt: {}\n\nDon't worry, it happens to everyone (probably).",
                 -growth,
                 new_length,
                 position,
@@ -260,7 +260,7 @@ pub async fn handle_grow_command(
         (
             "💀 CATASTROPHIC SHRINKAGE!",
             format!(
-                "DISASTER! Your dick shrank by **{} cm**. You're now at **{} cm**.\nYou are currently #{}{} in the server.\n\nNext attempt: {}\n\nMaybe try some herbal tea?",
+                "DISASTER! Your dick shrank by **{} cm**. You're now at **{} cm**.\nYou are currently **{}{}** in the server.\n\nNext attempt: {}\n\nMaybe try some herbal tea?",
                 -growth,
                 new_length,
                 position,
