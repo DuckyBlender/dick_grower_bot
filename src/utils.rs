@@ -1,15 +1,6 @@
 use crate::Bot;
 use serenity::prelude::*;
 
-pub fn escape_markdown(text: &str) -> String {
-    text.replace('\\', "\\\\")
-        .replace('*', "\\*")
-        .replace('_', "\\_")
-        .replace('`', "\\`")
-        .replace('~', "\\~")
-        .replace('|', "\\|")
-}
-
 #[derive(Debug)]
 pub struct BotStats {
     pub server_count: usize,
@@ -54,4 +45,13 @@ pub fn ordinal_suffix(n: usize) -> &'static str {
             _ => "th",
         }
     }
+}
+
+pub fn escape_markdown(text: &str) -> String {
+    text.replace('\\', "\\\\")
+        .replace('*', "\\*")
+        .replace('_', "\\_")
+        .replace('`', "\\`")
+        .replace('~', "\\~")
+        .replace('|', "\\|")
 }

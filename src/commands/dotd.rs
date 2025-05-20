@@ -241,7 +241,7 @@ pub async fn handle_dotd_command(
                     .title("🏆 Today's Dick of the Day! 🏆")
                     .color(0xFFD700) // Gold
                     .description(format!(
-                        "After careful consideration, the Dick of the Day award goes to... **{}**!\n\nThis \"**{}**\" has been awarded a bonus of **+{} cm**, bringing their total to **{} cm**!\n\nYou are currently **#{}{}** in the server.\n\nNext Dick of the Day: {}\n\nCongratulations on your outstanding achievement in the field of... length!",
+                        "After careful consideration, the Dick of the Day award goes to... **{}**!\n\nThis \"**{}**\" has been awarded a bonus of **+{} cm**, bringing their total to **{} cm**!\n\nYou are currently **{}{}** in the server.\n\nNext Dick of the Day: {}\n\nCongratulations on your outstanding achievement in the field of... length!",
                         winner_mention, title, bonus, winner.length + bonus, position, ordinal_suffix(position), next_dotd_discord
                     ))
                     .thumbnail(winner_user.face())
