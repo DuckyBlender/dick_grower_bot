@@ -1,6 +1,7 @@
 use crate::Bot;
 use crate::commands::escape_markdown;
 use crate::utils::get_bot_stats;
+use crate::{GuildNameCache, GUILD_NAME_CACHE_DURATION};
 use log::error;
 use rand::seq::IndexedRandom;
 use serenity::all::{
@@ -8,6 +9,7 @@ use serenity::all::{
 };
 use serenity::model::id::UserId;
 use serenity::prelude::*;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 pub async fn handle_global_command(
     ctx: &Context,
@@ -91,17 +93,68 @@ pub async fn handle_global_command(
         };
 
         let guild_name = match user.guild_id.parse::<u64>() {
-            Ok(id) => match ctx.http.get_guild(id.into()).await {
-                Ok(guild) => {
-                    // Only show guild name if it's a community server (public)
-                    if guild.features.contains(&"COMMUNITY".to_string()) {
-                        escape_markdown(&guild.name)
+            Ok(guild_id) => {
+                let current_time = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs();
+
+                // Check cache first
+                {
+                    let cache = bot.guild_name_cache.read().await;
+                    if let Some(cached) = cache.get(&guild_id) {
+                        if current_time - cached.cached_at < GUILD_NAME_CACHE_DURATION {
+                            cached.name.clone()
+                        } else {
+                            drop(cache); // Release read lock before acquiring write lock
+                            
+                            // Cache expired, fetch new name
+                            match ctx.http.get_guild(guild_id.into()).await {
+                                Ok(guild) => {
+                                    let name = if guild.features.contains(&"COMMUNITY".to_string()) {
+                                        escape_markdown(&guild.name)
+                                    } else {
+                                        "private server".to_string()
+                                    };
+                                    
+                                    // Update cache
+                                    let mut cache = bot.guild_name_cache.write().await;
+                                    cache.insert(guild_id, GuildNameCache {
+                                        name: name.clone(),
+                                        cached_at: current_time,
+                                    });
+                                    
+                                    name
+                                }
+                                Err(_) => "unknown server".to_string(),
+                            }
+                        }
                     } else {
-                        "private server".to_string()
+                        drop(cache); // Release read lock before acquiring write lock
+                        
+                        // Not in cache, fetch and cache
+                        match ctx.http.get_guild(guild_id.into()).await {
+                            Ok(guild) => {
+                                let name = if guild.features.contains(&"COMMUNITY".to_string()) {
+                                    escape_markdown(&guild.name)
+                                } else {
+                                    "private server".to_string()
+                                };
+                                
+                                // Add to cache
+                                let mut cache = bot.guild_name_cache.write().await;
+                                cache.insert(guild_id, GuildNameCache {
+                                    name: name.clone(),
+                                    cached_at: current_time,
+                                });
+                                
+                                name
+                            }
+                            Err(_) => "unknown server".to_string(),
+                        }
                     }
                 }
-                Err(_) => "unknown server".to_string(),
-            },
+            }
             Err(_) => "unknown server".to_string(),
         };
 

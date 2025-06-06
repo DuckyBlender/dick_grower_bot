@@ -30,9 +30,19 @@ impl TypeMapKey for Bot {
     type Value = Arc<Bot>;
 }
 
+// Guild name cache duration in seconds (12 hours)
+const GUILD_NAME_CACHE_DURATION: u64 = 12 * 60 * 60;
+
+#[derive(Clone)]
+pub struct GuildNameCache {
+    pub name: String,
+    pub cached_at: u64,
+}
+
 pub struct Bot {
     pub database: Pool<Sqlite>,
     pub pvp_challenges: RwLock<HashMap<String, PvpChallenge>>,
+    pub guild_name_cache: RwLock<HashMap<u64, GuildNameCache>>,
 }
 
 #[async_trait]
@@ -87,6 +97,8 @@ impl EventHandler for Handler {
                     "stats" => handle_stats_command(&ctx, &command).await,
                     "dickoftheday" => handle_dotd_command(&ctx, &command).await,
                     "help" => handle_help_command(&ctx, &command).await,
+                    "gift" => handle_gift_command(&ctx, &command).await,
+                    "viagra" => handle_viagra_command(&ctx, &command).await,
                     _ => {
                         // For unimplemented commands, respond directly here
                         command
@@ -186,6 +198,26 @@ impl EventHandler for Handler {
                 ),
             CreateCommand::new("dickoftheday").description("Randomly select a Dick of the Day"),
             CreateCommand::new("help").description("Show help information about the bot commands"),
+            CreateCommand::new("gift")
+                .description("Gift some of your length to another user")
+                .add_option(
+                    CreateCommandOption::new(
+                        CommandOptionType::User,
+                        "user",
+                        "The user you want to gift length to",
+                    )
+                    .required(true),
+                )
+                .add_option(
+                    CreateCommandOption::new(
+                        CommandOptionType::Integer,
+                        "amount",
+                        "The amount of cm you want to gift",
+                    )
+                    .required(true)
+                    .min_int_value(1),
+                ),
+            CreateCommand::new("viagra").description("Boost your growth by 20% for 6 hours (3 day cooldown)"),
         ];
 
         if let Err(why) = ctx.http.create_global_commands(&commands).await {
@@ -236,6 +268,7 @@ async fn main() {
     let bot_data = Arc::new(Bot {
         database,
         pvp_challenges: RwLock::new(HashMap::new()),
+        guild_name_cache: RwLock::new(HashMap::new()),
     });
 
     let mut client = Client::builder(token, intents)

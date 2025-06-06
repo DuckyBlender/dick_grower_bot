@@ -175,6 +175,22 @@ pub async fn handle_dotd_command(
         }
     };
 
+    // Log the DOTD bonus in length_history
+    let winner_total_length = winner.length + bonus;
+    if let Err(why) = sqlx::query!(
+        "INSERT INTO length_history (user_id, guild_id, length, growth_amount, growth_type)
+         VALUES (?, ?, ?, ?, 'dotd')",
+        winner.user_id,
+        guild_id,
+        winner_total_length,
+        bonus
+    )
+    .execute(&bot.database)
+    .await
+    {
+        error!("Error logging DOTD history: {:?}", why);
+    }
+
     // Update guild's last DOTD time
     match sqlx::query!(
         "UPDATE guild_settings SET last_dotd = datetime('now')
@@ -212,8 +228,7 @@ pub async fn handle_dotd_command(
 
     let winner_mention = winner_user.mention();
 
-    // Get winner's position in server top
-    let winner_total_length = winner.length + bonus;
+    // Get winner's position in server top  
     let position = match sqlx::query!(
         "SELECT COUNT(*) as pos FROM dicks WHERE guild_id = ? AND length > ?",
         guild_id,

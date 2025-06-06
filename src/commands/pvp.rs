@@ -588,6 +588,36 @@ pub async fn handle_pvp_accept(
         Err(_) => 0,
     };
 
+    // Log the PVP results in length_history
+    if let Err(why) = sqlx::query!(
+        "INSERT INTO length_history (user_id, guild_id, length, growth_amount, growth_type)
+         VALUES (?, ?, ?, ?, 'pvp_won')",
+        winner_id_str,
+        guild_id_str,
+        winner_length,
+        bet
+    )
+    .execute(&bot.database)
+    .await
+    {
+        error!("Error logging PVP win history: {:?}", why);
+    }
+
+    let negative_bet = -bet;
+    if let Err(why) = sqlx::query!(
+        "INSERT INTO length_history (user_id, guild_id, length, growth_amount, growth_type)
+         VALUES (?, ?, ?, ?, 'pvp_lost')",
+        loser_id_str,
+        guild_id_str,
+        loser_length,
+        negative_bet
+    )
+    .execute(&bot.database)
+    .await
+    {
+        error!("Error logging PVP loss history: {:?}", why);
+    }
+
     // Streak comment
     let streak_comment = if new_winner_streak >= 5 {
         format!(

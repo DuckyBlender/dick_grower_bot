@@ -17,11 +17,12 @@ pub async fn handle_top_command(
 
     let guild_id = command.guild_id.unwrap().to_string();
 
-    // Get top 10 users in this server
+    // Get top 10 users in this server with a single optimized query
     let top_users = match sqlx::query!(
         "SELECT user_id, length FROM dicks 
          WHERE guild_id = ? 
-         ORDER BY length DESC LIMIT 10",
+         ORDER BY length DESC, user_id ASC 
+         LIMIT 10",
         guild_id
     )
     .fetch_all(&bot.database)

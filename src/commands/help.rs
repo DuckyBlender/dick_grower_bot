@@ -9,12 +9,14 @@ pub async fn handle_help_command(
     command: &CommandInteraction,
 ) -> Result<(), serenity::Error> {
     let description = "\
-        `/grow` - Grow your dick once per 60 minutes\n\
+        `/grow` - Grow your dick once per 60 minutes (always positive growth now!)\n\
         `/top` - View the server's dick leaderboard\n\
         `/global` - View the global dick leaderboard\n\
         `/pvp <bet>` - Challenge someone to a dick battle with a cm bet\n\
         `/stats [user]` - View your or someone else's dick stats\n\
         `/dickoftheday` - Select a random Dick of the Day\n\
+        `/gift <user> <amount>` - Gift some of your length to another user\n\
+        `/viagra` - Boost your growth by 20% for 6 hours (3 day cooldown)\n\
         `/help` - Show this help message\n\
         \n\
         **🔔 Bot Updates & Community:**\n\

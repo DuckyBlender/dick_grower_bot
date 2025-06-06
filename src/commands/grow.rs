@@ -1,4 +1,5 @@
 use crate::Bot;
+use crate::commands::viagra::is_viagra_active;
 use crate::time::check_cooldown_minutes;
 use crate::utils::ordinal_suffix;
 use chrono::NaiveDateTime;
@@ -21,7 +22,7 @@ pub async fn handle_grow_command(
     let guild_id = command.guild_id.unwrap().to_string();
 
     // Check if the user has grown today and get their stats
-    let user_stats = match sqlx::query!(
+    let _user_stats = match sqlx::query!(
         "SELECT last_grow, length, growth_count FROM dicks WHERE user_id = ? AND guild_id = ?",
         user_id,
         guild_id
@@ -102,31 +103,22 @@ pub async fn handle_grow_command(
         }
     };
 
-    // Check if user is in grace period (first 7 growths)
-    let is_grace_period = user_stats.0 < 7;
-
-    // Generate growth amount based on whether user is in grace period
-    let growth = if is_grace_period {
-        // During grace period: 1 to 10 cm (only positive)
+    // Generate growth amount (always positive now, no more negative growth)
+    let base_growth = rand::rng().random_range(1..=10);
+    
+    // Check if viagra is active for this user
+    let viagra_active = is_viagra_active(bot, &user_id, &guild_id).await;
+    
+    // Apply viagra boost if active (20% increase)
+    let growth = if viagra_active {
+        let boosted = (base_growth as f64 * 1.2).round() as i64;
         info!(
-            "User {} is in grace period (growth #{}), generating positive growth only",
-            user_id,
-            user_stats.0 + 1
+            "User {} has viagra active, boosting growth from {} to {}",
+            user_id, base_growth, boosted
         );
-        rand::rng().random_range(1..=10)
+        boosted
     } else {
-        // After grace period: -5 to 10 cm with more positive chance
-        let sign_ratio: f32 = 0.80; // 80% chance of positive growth
-        let sign_ratio_percent = (sign_ratio * 100.0).round() as u32;
-
-        // Generate a random value
-        let is_positive = rand::rng().random_ratio(sign_ratio_percent, 100);
-
-        if is_positive {
-            rand::rng().random_range(1..=10) // Positive growth
-        } else {
-            rand::rng().random_range(-5..=-1) // Negative growth (never 0)
-        }
+        base_growth
     };
 
     // Update the database - increment growth count too
@@ -181,6 +173,21 @@ pub async fn handle_grow_command(
         }
     };
 
+    // Log the growth in length_history
+    if let Err(why) = sqlx::query!(
+        "INSERT INTO length_history (user_id, guild_id, length, growth_amount, growth_type)
+         VALUES (?, ?, ?, ?, 'grow')",
+        user_id,
+        guild_id,
+        new_length,
+        growth
+    )
+    .execute(&bot.database)
+    .await
+    {
+        error!("Error logging growth history: {:?}", why);
+    }
+
     // Get user position in server top
     let position = match sqlx::query!(
         "SELECT COUNT(*) as pos FROM dicks WHERE guild_id = ? AND length > ?",
@@ -203,13 +210,21 @@ pub async fn handle_grow_command(
     let next_grow_unix = (last_grow + chrono::Duration::minutes(60)).timestamp();
     let next_grow_discord = format!("<t:{}:R>", next_grow_unix);
 
+    // Add viagra boost indicator
+    let viagra_text = if viagra_active {
+        " 💊 **(VIAGRA BOOST APPLIED!)**"
+    } else {
+        ""
+    };
+
     // Create response with funny messages based on growth
-    let (title, description, color) = if growth > 7 {
+    let (title, description, color) = if growth > 10 {
         (
             "🚀 INCREDIBLE GROWTH!",
             format!(
-                "Holy moly! Your dick just grew by **{} cm** and is now a whopping **{} cm** long!\nYou are currently **{}{}** in the server.\n\nNext attempt: {}\n\nCareful, you might trip over it soon!",
+                "Holy moly! Your dick just grew by **{} cm**{} and is now a whopping **{} cm** long!\nYou are currently **{}{}** in the server.\n\nNext attempt: {}\n\nCareful, you might trip over it soon!",
                 growth,
+                viagra_text,
                 new_length,
                 position,
                 ordinal_suffix(position),
@@ -217,12 +232,13 @@ pub async fn handle_grow_command(
             ),
             0x00FF00, // Bright green
         )
-    } else if growth > 3 {
+    } else if growth > 7 {
         (
             "🔥 Impressive Growth!",
             format!(
-                "Nice! Your dick grew by **{} cm**! Your new length is **{} cm**.\nYou are currently **{}{}** in the server's leaderboard.\n\nNext attempt: {}\n\nKeep up the good work, size king!",
+                "Nice! Your dick grew by **{} cm**{}! Your new length is **{} cm**.\nYou are currently **{}{}** in the server's leaderboard.\n\nNext attempt: {}\n\nKeep up the good work, size king!",
                 growth,
+                viagra_text,
                 new_length,
                 position,
                 ordinal_suffix(position),
@@ -230,12 +246,13 @@ pub async fn handle_grow_command(
             ),
             0x33FF33, // Green
         )
-    } else if growth > 0 {
+    } else if growth > 3 {
         (
-            "🌱 Growth Achieved",
+            "🌱 Solid Growth",
             format!(
-                "A modest **{} cm** added. You're now at **{} cm**.\nYou are currently **{}{}** in the server.\n\nNext attempt: {}\n\nEvery centimeter counts!",
+                "A good **{} cm** added{}! You're now at **{} cm**.\nYou are currently **{}{}** in the server.\n\nNext attempt: {}\n\nEvery centimeter counts!",
                 growth,
+                viagra_text,
                 new_length,
                 position,
                 ordinal_suffix(position),
@@ -243,31 +260,19 @@ pub async fn handle_grow_command(
             ),
             0x66FF66, // Light green
         )
-    } else if growth >= -3 {
-        (
-            "📉 Minor Shrinkage",
-            format!(
-                "Oof! Your dick shrank by **{} cm**. You're now at **{} cm**.\nYou are currently **{}{}** in the server.\n\nNext attempt: {}\n\nDon't worry, it happens to everyone (probably).",
-                -growth,
-                new_length,
-                position,
-                ordinal_suffix(position),
-                next_grow_discord
-            ),
-            0xFF9933, // Orange
-        )
     } else {
         (
-            "💀 CATASTROPHIC SHRINKAGE!",
+            "📏 Modest Growth",
             format!(
-                "DISASTER! Your dick shrank by **{} cm**. You're now at **{} cm**.\nYou are currently **{}{}** in the server.\n\nNext attempt: {}\n\nMaybe try some herbal tea?",
-                -growth,
+                "A small but positive **{} cm** added{}. You're now at **{} cm**.\nYou are currently **{}{}** in the server.\n\nNext attempt: {}\n\nSmall steps lead to big achievements!",
+                growth,
+                viagra_text,
                 new_length,
                 position,
                 ordinal_suffix(position),
                 next_grow_discord
             ),
-            0xFF3333, // Red
+            0x99FF99, // Lighter green
         )
     };
 
