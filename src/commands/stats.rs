@@ -1,5 +1,6 @@
 use crate::Bot;
 use crate::commands::escape_markdown;
+use crate::commands::viagra::get_viagra_status;
 use crate::time::check_cooldown_minutes;
 use crate::utils::{get_fun_title_by_rank, ordinal_suffix};
 use chrono::NaiveDateTime;
@@ -128,6 +129,21 @@ pub async fn handle_stats_command(
         "⏰ Already grew today".to_string()
     };
 
+    // Get viagra status
+    let (viagra_active, effect_ends, next_available) = get_viagra_status(bot, &user_id, &guild_id).await;
+    
+    let viagra_status = if viagra_active {
+        if let Some(ends) = effect_ends {
+            format!("💊 **ACTIVE** (ends {})", ends)
+        } else {
+            "💊 **ACTIVE**".to_string()
+        }
+    } else if let Some(available) = next_available {
+        format!("💊 Available {}", available)
+    } else {
+        "💊 Available now".to_string()
+    };
+
     // Calculate win rate
     let total_fights = user_stats.pvp_wins + user_stats.pvp_losses;
     let win_rate = if total_fights > 0 {
@@ -188,6 +204,7 @@ pub async fn handle_stats_command(
                         true,
                     )
                     .field("Growth Status", growth_status, false)
+                    .field("Viagra Status", viagra_status, true)
                     .field(
                         "Battle Stats",
                         format!(
