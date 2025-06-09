@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE dicks SET viagra_last_used = ?, viagra_active_until = ? WHERE user_id = ? AND guild_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "11985bbbb778f1b4bd1b09e341b5992b47920cc8a5fd693dad40deb4959f419f"
+}

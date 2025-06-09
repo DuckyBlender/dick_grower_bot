@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO length_history (user_id, guild_id, length, growth_amount, growth_type)\n         VALUES (?, ?, ?, ?, 'gift_sent')",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "9e4ba9e174e9eebef3cebc92cf151b8a59bbd4e0139b3263ecaaac59fa982848"
+}

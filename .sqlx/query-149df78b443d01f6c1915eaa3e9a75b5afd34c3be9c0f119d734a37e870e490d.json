@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO length_history (user_id, guild_id, length, growth_amount, growth_type)\n         VALUES (?, ?, ?, ?, 'pvp_won')",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "149df78b443d01f6c1915eaa3e9a75b5afd34c3be9c0f119d734a37e870e490d"
+}
