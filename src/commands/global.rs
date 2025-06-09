@@ -2,7 +2,7 @@ use crate::Bot;
 use crate::commands::escape_markdown;
 use crate::utils::get_bot_stats;
 use crate::{GuildNameCache, GUILD_NAME_CACHE_DURATION};
-use log::error;
+use log::{error, info};
 use rand::seq::IndexedRandom;
 use serenity::all::{
     CommandInteraction, CreateEmbed, CreateEmbedFooter, CreateInteractionResponseFollowup,
@@ -104,8 +104,10 @@ pub async fn handle_global_command(
                     let cache = bot.guild_name_cache.read().await;
                     if let Some(cached) = cache.get(&guild_id) {
                         if current_time - cached.cached_at < GUILD_NAME_CACHE_DURATION {
+                            info!("Using cached guild name for {}", cached.name);
                             cached.name.clone()
                         } else {
+                            info!("Cache expired for guild {}, fetching new name", cached.name);
                             drop(cache); // Release read lock before acquiring write lock
                             
                             // Cache expired, fetch new name
@@ -130,6 +132,7 @@ pub async fn handle_global_command(
                             }
                         }
                     } else {
+                        info!("No cached guild name for {}, fetching new name", guild_id);
                         drop(cache); // Release read lock before acquiring write lock
                         
                         // Not in cache, fetch and cache
