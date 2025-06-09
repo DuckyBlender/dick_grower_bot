@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT viagra_active_until FROM dicks WHERE user_id = ? AND guild_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "viagra_active_until",
+        "ordinal": 0,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "d68d2d65bdf953bad7bb3176a0e2d22c3c2c9fddfe7bc296c1df2caa6c39165b"
+}
