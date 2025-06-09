@@ -8,7 +8,7 @@ A Discord bot where users compete to grow the biggest virtual dick in their serv
 - **`/grow`** - Grow your dick once per hour (always positive growth!)
 - **`/top`** - View the server's dick leaderboard
 - **`/global`** - View the global dick leaderboard across all servers
-- **`/stats [user]`** - View detailed dick statistics
+- **`/stats <user>`** - View detailed dick statistics
 - **`/help`** - Show command help
 
 ### Battle System
@@ -53,7 +53,7 @@ A Discord bot where users compete to grow the biggest virtual dick in their serv
 | `/top` | Server leaderboard | None |
 | `/global` | Global leaderboard | None |
 | `/pvp <bet>` | Dick battle with cm betting | None |
-| `/stats [user]` | View user statistics | None |
+| `/stats <user>` | View user statistics | None |
 | `/dickoftheday` | Random daily winner selection | 24 hours |
 | `/gift <user> <amount>` | Transfer length to another user | None |
 | `/viagra` | 20% growth boost for 6 hours | 72 hours |
