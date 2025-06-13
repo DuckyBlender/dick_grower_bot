@@ -262,8 +262,7 @@ async fn main() {
         .expect("Coudn't connect to the sqlite database");
 
     // Initialize the bot
-    let intents =
-        GatewayIntents::GUILD_MESSAGES | GatewayIntents::MESSAGE_CONTENT | GatewayIntents::GUILDS;
+    let intents = GatewayIntents::GUILDS;
 
     let bot_data = Arc::new(Bot {
         database,
