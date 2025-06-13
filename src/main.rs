@@ -95,7 +95,7 @@ impl EventHandler for Handler {
                     "global" => handle_global_command(&ctx, &command).await,
                     "pvp" => handle_pvp_command(&ctx, &command).await,
                     "stats" => handle_stats_command(&ctx, &command).await,
-                    "dickoftheday" => handle_dotd_command(&ctx, &command).await,
+                    "schlongoftheday" => handle_sotd_command(&ctx, &command).await,
                     "help" => handle_help_command(&ctx, &command).await,
                     "gift" => handle_gift_command(&ctx, &command).await,
                     "viagra" => handle_viagra_command(&ctx, &command).await,
@@ -170,13 +170,13 @@ impl EventHandler for Handler {
 
         // Register commands globally
         let commands = vec![
-            CreateCommand::new("grow").description("Grow your cucumber daily"),
+            CreateCommand::new("grow").description("Grow your cucumber"),
             CreateCommand::new("top")
                 .description("Show the top players with the biggest weapons in this server"),
             CreateCommand::new("global")
                 .description("Show the top players with the biggest weapons across all servers"),
             CreateCommand::new("pvp")
-                .description("Start a dick battle")
+                .description("Start a schlong battle")
                 .add_option(
                     CreateCommandOption::new(
                         CommandOptionType::Integer,
@@ -187,7 +187,7 @@ impl EventHandler for Handler {
                     .min_int_value(1),
                 ),
             CreateCommand::new("stats")
-                .description("View your or another user's dick stats")
+                .description("View your or another user's stats")
                 .add_option(
                     CreateCommandOption::new(
                         CommandOptionType::User,
@@ -196,7 +196,7 @@ impl EventHandler for Handler {
                     )
                     .required(false),
                 ),
-            CreateCommand::new("dickoftheday").description("Randomly select a Dick of the Day"),
+            CreateCommand::new("schlongoftheday").description("Randomly select a Schlong of the Day"),
             CreateCommand::new("help").description("Show help information about the bot commands"),
             CreateCommand::new("gift")
                 .description("Gift some of your length to another user")
@@ -217,7 +217,7 @@ impl EventHandler for Handler {
                     .required(true)
                     .min_int_value(1),
                 ),
-            CreateCommand::new("viagra").description("Boost your growth by 20% for 6 hours (3 day cooldown)"),
+            CreateCommand::new("viagra").description("Boost your growth by 20% for 6 hours (20 hour cooldown)"),
         ];
 
         if let Err(why) = ctx.http.create_global_commands(&commands).await {

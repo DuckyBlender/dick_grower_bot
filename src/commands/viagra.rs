@@ -8,7 +8,7 @@ use serenity::all::{
 };
 use serenity::prelude::*;
 
-const VIAGRA_COOLDOWN_HOURS: i64 = 72; // 3 days
+const VIAGRA_COOLDOWN_HOURS: i64 = 20;
 const VIAGRA_DURATION_HOURS: i64 = 6; // 6 hours of effect
 
 pub async fn handle_viagra_command(
