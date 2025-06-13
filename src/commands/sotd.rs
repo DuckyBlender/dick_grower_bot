@@ -12,11 +12,11 @@ use serenity::model::id::UserId;
 use serenity::prelude::*;
 
 /// Selects a random winner index from the list of active users.
-pub fn choose_dotd_winner<R: Rng>(rng: &mut R, active_users_len: usize) -> usize {
+pub fn choose_sotd_winner<R: Rng>(rng: &mut R, active_users_len: usize) -> usize {
     rng.random_range(0..active_users_len)
 }
 
-pub async fn handle_dotd_command(
+pub async fn handle_sotd_command(
     ctx: &Context,
     command: &CommandInteraction,
 ) -> Result<(), serenity::Error> {
@@ -130,14 +130,14 @@ pub async fn handle_dotd_command(
 
     // Log all potential winners
     info!(
-        "Potential DOTD candidates: {:?}",
+        "Potential SOTD candidates: {:?}",
         active_users.iter().map(|u| &u.user_id).collect::<Vec<_>>()
     );
 
     // Select a random winner BEFORE any .await after this point
     let winner_idx = {
         let mut rng = rand::rng();
-        choose_dotd_winner(&mut rng, active_users.len())
+        choose_sotd_winner(&mut rng, active_users.len())
     };
     info!(
         "Generating a random number between 0 and {}: {}",
@@ -278,7 +278,7 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(42);
         let runs = 1000;
         for _ in 0..runs {
-            let idx = choose_dotd_winner(&mut rng, 3);
+            let idx = choose_sotd_winner(&mut rng, 3);
             counts[idx] += 1;
         }
         for (i, &count) in counts.iter().enumerate() {
