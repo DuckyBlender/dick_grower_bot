@@ -1,17 +1,30 @@
-# Git pull to get the latest code
+#!/bin/bash
+
+# Pull latest code
 git pull
 
-# Build the new Docker image first
+# Build Docker image
 echo "Building new Docker image..."
 docker build -t dick-bot .
 
-# Only stop and remove the old container after the new image is ready
+# Stop and remove any old container
 echo "Stopping old container..."
-docker stop dick-grower-bot || true 
+docker stop dick-grower-bot || true
 docker rm dick-grower-bot || true
 
-# Run the new container with the same volume mount to preserve the database
+# Ensure the database file exists before starting container
+if [ ! -f "$(pwd)/database.sqlite" ]; then
+    echo "ERROR: database.sqlite does not exist in $(pwd)."
+    echo "Create the file and run migrations before deploying."
+    exit 1
+fi
+
+# Run the new container, bind-mounting your local database file
 echo "Starting new container..."
-docker run -d --name dick-grower-bot -v dick_data:/app/data dick-bot
+docker run -d \
+    --name dick-grower-bot \
+    -v "$(pwd)/database.sqlite:/app/database.sqlite" \
+    dick-bot
 
 echo "Deployment complete!"
+
