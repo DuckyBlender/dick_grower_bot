@@ -1,26 +1,33 @@
-# 🍆 Schlong Grower Bot
+# 🪴 Plant Grower Bot
 
-A Discord bot where users compete to grow the biggest virtual dick in their server! Built with Rust using Serenity and SQLx.
-Originally this bot was called "Dick Grower Bot", but was later re-named to somewhat comply with the Discord Community Guidelines for bot verification.
+A Discord bot where users compete to grow the biggest virtual plant in their server! Built with Rust using Serenity and SQLx.
+This bot was originally called "Dick Grower Bot", but has been re-themed to be more appropriate for all audiences.
+
+Servers can choose to use the original "Dick Theme" through the settings command if they prefer.
 
 ## Features
 
 ### Core Commands
-- **`/grow`** - Grow your dick once per hour (always positive growth!)
-- **`/top`** - View the server's dick leaderboard
-- **`/global`** - View the global dick leaderboard across all servers
-- **`/stats <user>`** - View detailed dick statistics
+- **`/grow`** - Grow your plant once per hour (always positive growth!)
+- **`/top`** - View the server's plant leaderboard
+- **`/global`** - View the global plant leaderboard across all servers
+- **`/stats <user>`** - View detailed plant statistics
 - **`/help`** - Show command help
 
+### Progression System
+- **`/prestige`** - Reset your plant to gain permanent bonuses
+- Strategic long-term growth planning
+- Prestige points for status and progression
+
 ### Battle System
-- **`/pvp <bet>`** - Challenge others to dick battles with cm bets
+- **`/pvp <bet>`** - Challenge others to plant battles with cm bets
 - Interactive button-based acceptance system
 - Win streaks and battle statistics tracking
 - Risk vs reward betting mechanics
 
 ### Social Features
 - **`/gift <user> <amount>`** - Gift some of your length to another user
-- **`/schlongoftheday`** - Random daily Schlong of the Day selection with bonuses
+- **`/plantoftheday`** - Random daily Plant of the Day selection with bonuses
 - Length sharing and generosity mechanics
 
 ### Enhancement System
@@ -50,13 +57,15 @@ Originally this bot was called "Dick Grower Bot", but was later re-named to some
 
 | Command | Description | Cooldown |
 |---------|-------------|----------|
-| `/grow` | Grow your dick (1-10cm, +20% with viagra) | 60 minutes |
+| `/grow` | Grow your plant (1-10cm, +20% with viagra) | 60 minutes |
 | `/top` | Server leaderboard | None |
 | `/global` | Global leaderboard | None |
-| `/pvp <bet>` | Dick battle with cm betting | None |
+| `/pvp <bet>` | Plant battle with cm betting | None |
 | `/stats <user>` | View user statistics | None |
-| `/schlongoftheday` | Random daily winner selection | 24 hours |
+| `/plantoftheday` | Random daily winner selection | 24 hours |
 | `/gift <user> <amount>` | Transfer length to another user | None |
+| `/prestige` | Reset plant for permanent bonuses | None |
+| `/settings` | Configure bot settings | None |
 | `/viagra` | 20% growth boost for 6 hours | 72 hours |
 | `/help` | Show command help | None |
 
@@ -74,14 +83,14 @@ Originally this bot was called "Dick Grower Bot", but was later re-named to some
 - **Visual indicator** in growth messages
 
 ### Special Events
-- **Schlong of the Day**: 10-25 cm bonus (daily)
+- **Plant of the Day**: 10-25 cm bonus (daily)
 - **PVP Victories**: Win opponent's bet amount
 - **Gifts**: Receive length from generous users
 
 ## Database Schema
 
 ### Main Tables
-- `dicks` - User data, lengths, stats, viagra status
+- `plants` - User data, lengths, stats, viagra status
 - `length_history` - Growth tracking over time
 - `guild_settings` - Server-specific settings
 
@@ -89,7 +98,7 @@ Originally this bot was called "Dick Grower Bot", but was later re-named to some
 - `grow` - Regular hourly growth
 - `gift_sent` / `gift_received` - Length transfers
 - `pvp_won` / `pvp_lost` - Battle results  
-- `dotd` - Dick of the Day bonuses
+- `dotd` - Plant of the Day bonuses
 
 ## Development
 

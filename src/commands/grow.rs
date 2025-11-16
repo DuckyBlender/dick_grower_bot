@@ -22,8 +22,8 @@ pub async fn handle_grow_command(
     let guild_id = command.guild_id.unwrap().to_string();
 
     // Check if the user has grown today and get their stats
-    let _user_stats = match sqlx::query!(
-        "SELECT last_grow, length, growth_count FROM dicks WHERE user_id = ? AND guild_id = ?",
+    let (growth_count, length, prestige_level) = match sqlx::query!(
+        "SELECT last_grow, length, growth_count, prestige_level FROM dicks WHERE user_id = ? AND guild_id = ?",
         user_id,
         guild_id
     )
@@ -46,11 +46,11 @@ pub async fn handle_grow_command(
                             CreateEmbed::new()
                                 .title("🕒 Hold up, speedy!")
                                 .description(format!(
-                                    "You've already played with your dick today! Try again in {discord_timestamp}\n\nExcessive stimulation might cause injuries, you know?",
+                                    "You've already tended to your plant today! Try again in {discord_timestamp}\n\nOverwatering might harm your plant, you know?",
                                 ))
                                 .color(0xFF5733)
                                 .footer(CreateEmbedFooter::new(
-                                    "Patience is key... especially for your little buddy.",
+                                    "Patience is key... especially for your growing plant.",
                                 ))
                         )
                         .ephemeral(true)
@@ -59,7 +59,7 @@ pub async fn handle_grow_command(
             }
 
             // Return user stats
-            (record.growth_count, record.length)
+            (record.growth_count, record.length, record.prestige_level)
         }
         Ok(None) => {
             // New user, create a record
@@ -70,8 +70,8 @@ pub async fn handle_grow_command(
             match sqlx::query!(
                 "INSERT INTO dicks (user_id, guild_id, length, last_grow, growth_count, dick_of_day_count, 
                                    pvp_wins, pvp_losses, pvp_max_streak, pvp_current_streak,
-                                   cm_won, cm_lost)
-                 VALUES (?, ?, 0, datetime('now'), 0, 0, 0, 0, 0, 0, 0, 0)",
+                                   cm_won, cm_lost, prestige_level, prestige_points)
+                 VALUES (?, ?, 0, datetime('now'), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)",
                 user_id,
                 guild_id
             )
@@ -84,8 +84,8 @@ pub async fn handle_grow_command(
                 }
             };
 
-            // New user with 0 growth count
-            (0, 0)
+            // New user with 0 growth count and 0 prestige level
+            (0, 0, 0)
         }
         Err(why) => {
             error!("Database error: {:?}", why);
@@ -94,7 +94,7 @@ pub async fn handle_grow_command(
                     CreateEmbed::new()
                         .title("⚠️ Database Error")
                         .description(
-                            "Something went wrong with your dick growth. Maybe the universe is telling you something?",
+                            "Something went wrong with your plant growth. Maybe the universe is telling you something?",
                         )
                         .color(0xFF0000),
                 ),
@@ -103,6 +103,9 @@ pub async fn handle_grow_command(
         }
     };
 
+    // Calculate prestige bonus (0.5cm per prestige level)
+    let prestige_bonus = (prestige_level as f64 * 0.5).round() as i64;
+    
     // Generate growth amount (always positive now, no more negative growth)
     let base_growth = rand::rng().random_range(1..=10);
     
@@ -110,7 +113,7 @@ pub async fn handle_grow_command(
     let viagra_active = is_viagra_active(bot, &user_id, &guild_id).await;
     
     // Apply viagra boost if active (20% increase)
-    let growth = if viagra_active {
+    let growth_before_bonus = if viagra_active {
         let boosted = (base_growth as f64 * 1.2).round() as i64;
         info!(
             "User {} has viagra active, boosting growth from {} to {}",
@@ -120,6 +123,9 @@ pub async fn handle_grow_command(
     } else {
         base_growth
     };
+    
+    // Apply prestige bonus
+    let growth = growth_before_bonus + prestige_bonus;
 
     // Update the database - increment growth count too
     match sqlx::query!(
@@ -210,21 +216,29 @@ pub async fn handle_grow_command(
     let next_grow_unix = (last_grow + chrono::Duration::minutes(60)).timestamp();
     let next_grow_discord = format!("<t:{}:R>", next_grow_unix);
 
-    // Add viagra boost indicator
+    // Add bonus indicators
     let viagra_text = if viagra_active {
         " 💊 **(VIAGRA BOOST APPLIED!)**"
     } else {
         ""
     };
+    
+    let prestige_text = if prestige_bonus > 0 {
+        format!(" 🌟 **(PRESTIGE BONUS: +{} cm!)**", prestige_bonus)
+    } else {
+        "".to_string()
+    };
 
     // Create response with funny messages based on growth
-    let (title, description, color) = if growth > 10 {
+    let (title, description, color) = if growth > 15 {
         (
-            "🚀 INCREDIBLE GROWTH!",
+            "🚀 PHENOMENAL GROWTH!",
             format!(
-                "Holy moly! Your dick just grew by **{} cm**{} and is now a whopping **{} cm** long!\nYou are currently **{}{}** in the server.\n\nNext attempt: {}\n\nCareful, you might trip over it soon!",
+                "Incredible! Your plant just grew by **{} cm** (base: {}{}, {}{}) and is now a massive **{} cm** tall!\nYou are currently **{}{}** in the server.\n\nNext tending: {}\n\nThis growth rate is unprecedented! Scientists want to study your green thumb!",
                 growth,
+                base_growth,
                 viagra_text,
+                prestige_text,
                 new_length,
                 position,
                 ordinal_suffix(position),
@@ -232,13 +246,15 @@ pub async fn handle_grow_command(
             ),
             0x00FF00, // Bright green
         )
-    } else if growth > 7 {
+    } else if growth > 10 {
         (
-            "🔥 Impressive Growth!",
+            "🌿 AMAZING GROWTH!",
             format!(
-                "Nice! Your dick grew by **{} cm**{}! Your new length is **{} cm**.\nYou are currently **{}{}** in the server's leaderboard.\n\nNext attempt: {}\n\nKeep up the good work, size king!",
+                "Wow! Your plant grew by **{} cm** (base: {}{}, {}{}) and is now **{} cm** tall!\nYou are currently **{}{}** in the server.\n\nNext tending: {}\n\nYour plant is thriving under your care!",
                 growth,
+                base_growth,
                 viagra_text,
+                prestige_text,
                 new_length,
                 position,
                 ordinal_suffix(position),
@@ -246,13 +262,15 @@ pub async fn handle_grow_command(
             ),
             0x33FF33, // Green
         )
-    } else if growth > 3 {
+    } else if growth > 5 {
         (
-            "🌱 Solid Growth",
+            "🌱 Great Growth!",
             format!(
-                "A good **{} cm** added{}! You're now at **{} cm**.\nYou are currently **{}{}** in the server.\n\nNext attempt: {}\n\nEvery centimeter counts!",
+                "A solid **{} cm** added (base: {}{}, {}{})! Your plant is now **{} cm** tall.\nYou are currently **{}{}** in the server.\n\nNext tending: {}\n\nConsistent care is key to a healthy plant!",
                 growth,
+                base_growth,
                 viagra_text,
+                prestige_text,
                 new_length,
                 position,
                 ordinal_suffix(position),
@@ -262,11 +280,13 @@ pub async fn handle_grow_command(
         )
     } else {
         (
-            "📏 Modest Growth",
+            "🪴 Steady Growth",
             format!(
-                "A small but positive **{} cm** added{}. You're now at **{} cm**.\nYou are currently **{}{}** in the server.\n\nNext attempt: {}\n\nSmall steps lead to big achievements!",
+                "A respectable **{} cm** added (base: {}{}, {}{}). Your plant is now **{} cm** tall.\nYou are currently **{}{}** in the server.\n\nNext tending: {}\n\nSlow and steady wins the race!",
                 growth,
+                base_growth,
                 viagra_text,
+                prestige_text,
                 new_length,
                 position,
                 ordinal_suffix(position),
@@ -283,7 +303,7 @@ pub async fn handle_grow_command(
                 .description(description)
                 .color(color)
                 .footer(CreateEmbedFooter::new(
-                    "Remember: it's not about the size, it's about... actually, it is about the size.",
+                    "With proper care and patience, your plant will flourish!",
                 )),
         ),
     );

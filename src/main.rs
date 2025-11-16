@@ -68,7 +68,7 @@ impl EventHandler for Handler {
                                 .description("This bot can only be used in a server, not in direct messages.")
                                 .color(0xFF5733)
                                 .footer(CreateEmbedFooter::new(
-                                    "Please use this bot in a server where it is invited and begin your cucumber journey!",
+                                    "Please use this bot in a server where it is invited and begin your plant growing journey!",
                                 ))
                             )
                             .ephemeral(true)
@@ -95,9 +95,10 @@ impl EventHandler for Handler {
                     "global" => handle_global_command(&ctx, &command).await,
                     "pvp" => handle_pvp_command(&ctx, &command).await,
                     "stats" => handle_stats_command(&ctx, &command).await,
-                    "schlongoftheday" => handle_sotd_command(&ctx, &command).await,
+                    "plantoftheday" => handle_sotd_command(&ctx, &command).await,
                     "help" => handle_help_command(&ctx, &command).await,
                     "gift" => handle_gift_command(&ctx, &command).await,
+                    "prestige" => handle_prestige_command(&ctx, &command).await,
                     "viagra" => handle_viagra_command(&ctx, &command).await,
                     _ => {
                         // For unimplemented commands, respond directly here
@@ -170,13 +171,13 @@ impl EventHandler for Handler {
 
         // Register commands globally
         let commands = vec![
-            CreateCommand::new("grow").description("Grow your cucumber"),
+            CreateCommand::new("grow").description("Grow your plant"),
             CreateCommand::new("top")
-                .description("Show the top players with the biggest weapons in this server"),
+                .description("Show the top players with the biggest plants in this server"),
             CreateCommand::new("global")
-                .description("Show the top players with the biggest weapons across all servers"),
+                .description("Show the top players with the biggest plants across all servers"),
             CreateCommand::new("pvp")
-                .description("Start a schlong battle")
+                .description("Start a plant battle")
                 .add_option(
                     CreateCommandOption::new(
                         CommandOptionType::Integer,
@@ -196,15 +197,15 @@ impl EventHandler for Handler {
                     )
                     .required(false),
                 ),
-            CreateCommand::new("schlongoftheday").description("Randomly select a Schlong of the Day"),
+            CreateCommand::new("plantoftheday").description("Randomly select a Plant of the Day"),
             CreateCommand::new("help").description("Show help information about the bot commands"),
             CreateCommand::new("gift")
-                .description("Gift some of your length to another user")
+                .description("Gift some of your growth to another user")
                 .add_option(
                     CreateCommandOption::new(
                         CommandOptionType::User,
                         "user",
-                        "The user you want to gift length to",
+                        "The user you want to gift growth to",
                     )
                     .required(true),
                 )
@@ -217,6 +218,7 @@ impl EventHandler for Handler {
                     .required(true)
                     .min_int_value(1),
                 ),
+            CreateCommand::new("prestige").description("Prestige your plant to gain bonuses"),
             CreateCommand::new("viagra").description("Boost your growth by 20% for 6 hours (20 hour cooldown)"),
         ];
 
