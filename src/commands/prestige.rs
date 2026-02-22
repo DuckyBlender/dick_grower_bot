@@ -1,5 +1,4 @@
 use crate::Bot;
-use crate::commands::escape_markdown;
 use log::{error, info};
 use serenity::all::{
     CommandInteraction, CreateEmbed, CreateEmbedFooter, CreateInteractionResponse,
@@ -7,8 +6,20 @@ use serenity::all::{
 };
 use serenity::prelude::*;
 
-const PRESTIGE_REQUIRED_LENGTH: i64 = 1000; // Need 1000cm to prestige
-const PRESTIGE_BONUS_MULTIPLIER: f64 = 0.1; // 10% bonus per prestige level
+const PRESTIGE_BASE_REQUIRED_LENGTH: i64 = 1000;
+const PRESTIGE_REQUIREMENT_MULTIPLIER: f64 = 1.12;
+const PRESTIGE_BONUS_MULTIPLIER: f64 = 0.1;
+
+fn required_length_for_next_prestige(current_prestige_level: i64) -> i64 {
+    let level = current_prestige_level.clamp(0, 50) as i32;
+    (PRESTIGE_BASE_REQUIRED_LENGTH as f64 * PRESTIGE_REQUIREMENT_MULTIPLIER.powi(level)).round()
+        as i64
+}
+
+pub fn calculate_prestige_growth_bonus(prestige_level: i64) -> i64 {
+    let level = prestige_level.max(0) as f64;
+    level.sqrt().round() as i64
+}
 
 pub async fn handle_prestige_command(
     ctx: &Context,
@@ -21,7 +32,7 @@ pub async fn handle_prestige_command(
     let guild_id = command.guild_id.unwrap().to_string();
 
     // Get user's current stats
-    let user_stats = match sqlx::query!(
+    let (current_length, current_prestige_level, current_prestige_points) = match sqlx::query!(
         "SELECT length, prestige_level, prestige_points FROM dicks WHERE user_id = ? AND guild_id = ?",
         user_id,
         guild_id
@@ -29,7 +40,7 @@ pub async fn handle_prestige_command(
     .fetch_optional(&bot.database)
     .await
     {
-        Ok(Some(stats)) => stats,
+        Ok(Some(stats)) => (stats.length, stats.prestige_level, stats.prestige_points),
         Ok(None) => {
             // Create new user with 0 length
             info!(
@@ -57,7 +68,7 @@ pub async fn handle_prestige_command(
                     .fetch_one(&bot.database)
                     .await
                     {
-                        Ok(stats) => stats,
+                        Ok(stats) => (stats.length, stats.prestige_level, stats.prestige_points),
                         Err(why) => {
                             error!("Error fetching new user stats: {:?}", why);
                             let builder = CreateInteractionResponse::Message(
@@ -106,20 +117,22 @@ pub async fn handle_prestige_command(
         }
     };
 
+    let required_length = required_length_for_next_prestige(current_prestige_level);
+
     // Check if user has enough length to prestige
-    if user_stats.length < PRESTIGE_REQUIRED_LENGTH {
+    if current_length < required_length {
         let builder = CreateInteractionResponse::Message(
             CreateInteractionResponseMessage::new()
                 .add_embed(
                     CreateEmbed::new()
-                        .title("🌱 Not Ready to Prestige")
+                        .title("🍆 Not Ready to Prestige")
                         .description(format!(
-                            "You need at least **{} cm** to prestige, but you only have **{} cm**.\n\nKeep growing your plant to reach the required size!",
-                            PRESTIGE_REQUIRED_LENGTH, user_stats.length
+                            "You need at least **{} cm** to prestige, but you only have **{} cm**.\n\nGrow harder to reach the next reset milestone.",
+                            required_length, current_length
                         ))
                         .color(0xFF5733)
                         .footer(CreateEmbedFooter::new(
-                            "Every big plant started as a small seed. Keep nurturing yours!",
+                            "Every legend started small. Keep pumping those /grow reps.",
                         ))
                 )
                 .ephemeral(true),
@@ -128,9 +141,9 @@ pub async fn handle_prestige_command(
     }
 
     // Calculate prestige bonus
-    let new_prestige_level = user_stats.prestige_level + 1;
-    let bonus_points = (user_stats.length as f64 * PRESTIGE_BONUS_MULTIPLIER).round() as i64;
-    let new_prestige_points = user_stats.prestige_points + bonus_points;
+    let new_prestige_level = current_prestige_level + 1;
+    let bonus_points = (current_length as f64 * PRESTIGE_BONUS_MULTIPLIER).round() as i64;
+    let new_prestige_points = current_prestige_points + bonus_points;
 
     // Start transaction
     let mut transaction = match bot.database.begin().await {
@@ -151,25 +164,50 @@ pub async fn handle_prestige_command(
         }
     };
 
-    // Reset length to 0 and update prestige info
-    if let Err(why) = sqlx::query!(
-        "UPDATE dicks SET length = 0, prestige_level = ?, prestige_points = ? WHERE user_id = ? AND guild_id = ?",
+    // Reset length and update prestige info.
+    // Guard with current level and required length so concurrent calls can't double-dip.
+    let update_result = match sqlx::query!(
+        "UPDATE dicks
+         SET length = 0, prestige_level = ?, prestige_points = ?
+         WHERE user_id = ? AND guild_id = ? AND length >= ? AND prestige_level = ?",
         new_prestige_level,
         new_prestige_points,
         user_id,
-        guild_id
+        guild_id,
+        required_length,
+        current_prestige_level
     )
     .execute(&mut *transaction)
     .await
     {
-        error!("Error updating prestige: {:?}", why);
+        Ok(result) => result,
+        Err(why) => {
+            error!("Error updating prestige: {:?}", why);
+            let _ = transaction.rollback().await;
+            let builder = CreateInteractionResponse::Message(
+                CreateInteractionResponseMessage::new()
+                    .add_embed(
+                        CreateEmbed::new()
+                            .title("⚠️ Prestige Failed")
+                            .description("Failed to process the prestige. Transaction rolled back.")
+                            .color(0xFF0000),
+                    )
+                    .ephemeral(true),
+            );
+            return command.create_response(&ctx.http, builder).await;
+        }
+    };
+
+    if update_result.rows_affected() == 0 {
         let _ = transaction.rollback().await;
         let builder = CreateInteractionResponse::Message(
             CreateInteractionResponseMessage::new()
                 .add_embed(
                     CreateEmbed::new()
                         .title("⚠️ Prestige Failed")
-                        .description("Failed to process the prestige. Transaction rolled back.")
+                        .description(
+                            "Your stats changed while prestiging. Try /prestige again in a moment.",
+                        )
                         .color(0xFF0000),
                 )
                 .ephemeral(true),
@@ -184,7 +222,7 @@ pub async fn handle_prestige_command(
         user_id,
         guild_id,
         new_prestige_level,
-        user_stats.length
+        current_length
     )
     .execute(&mut *transaction)
     .await
@@ -208,21 +246,22 @@ pub async fn handle_prestige_command(
         return command.create_response(&ctx.http, builder).await;
     }
 
-    // Calculate growth bonus based on prestige level
-    let growth_bonus = (new_prestige_level as f64 * 0.5).round() as i64; // 0.5cm bonus per prestige level
+    let growth_bonus = calculate_prestige_growth_bonus(new_prestige_level);
+    let next_required_length = required_length_for_next_prestige(new_prestige_level);
 
     // Create response with fun messages
     let (title, description, color) = if new_prestige_level == 1 {
         (
-            "🌱 FIRST PRESTIGE! 🌱",
+            "🍆 FIRST PRESTIGE! 🍆",
             format!(
-                "Congratulations! You've successfully prestiged your plant for the first time!\n\n\
-                • Your plant has been reset to 0 cm\n\
+                "Congratulations! You've prestiged your dick for the first time!\n\n\
+                • Your dick has been reset to 0 cm\n\
                 • You gained **{} prestige points**\n\
                 • You are now prestige level **{}**\n\
                 • You now get a **{} cm** bonus growth per /grow!\n\n\
-                Your dedication has paid off! This is just the beginning of your journey to becoming a plant master.",
-                bonus_points, new_prestige_level, growth_bonus
+                Next prestige target: **{} cm**.\n\
+                Your dedication paid off. This is only the beginning.",
+                bonus_points, new_prestige_level, growth_bonus, next_required_length
             ),
             0x00FF00, // Green
         )
@@ -231,26 +270,36 @@ pub async fn handle_prestige_command(
             "🌟 LEGENDARY PRESTIGE! 🌟",
             format!(
                 "INCREDIBLE! You've reached prestige level **{}**!\n\n\
-                • Your plant has been reset to 0 cm\n\
+                • Your dick has been reset to 0 cm\n\
                 • You gained **{} prestige points**\n\
                 • You now have a total of **{} prestige points**\n\
                 • You now get a **{} cm** bonus growth per /grow!\n\n\
-                You are a true plant legend! Your green thumb is unmatched!",
-                new_prestige_level, bonus_points, new_prestige_points, growth_bonus
+                Next prestige target: **{} cm**.\n\
+                You are now operating at certified monster status.",
+                new_prestige_level,
+                bonus_points,
+                new_prestige_points,
+                growth_bonus,
+                next_required_length
             ),
             0xFFD700, // Gold
         )
     } else {
         (
-            "🌿 Prestige Complete! 🌿",
+            "🏆 Prestige Complete! 🏆",
             format!(
-                "Well done! You've prestiged your plant to level **{}**!\n\n\
-                • Your plant has been reset to 0 cm\n\
+                "Well done! You've prestiged to level **{}**!\n\n\
+                • Your dick has been reset to 0 cm\n\
                 • You gained **{} prestige points**\n\
                 • You now have a total of **{} prestige points**\n\
                 • You now get a **{} cm** bonus growth per /grow!\n\n\
-                Each prestige makes you stronger! Keep growing!",
-                new_prestige_level, bonus_points, new_prestige_points, growth_bonus
+                Next prestige target: **{} cm**.\n\
+                Keep grinding. Every prestige makes future growth stronger.",
+                new_prestige_level,
+                bonus_points,
+                new_prestige_points,
+                growth_bonus,
+                next_required_length
             ),
             0x32CD32, // Lime Green
         )
@@ -264,7 +313,7 @@ pub async fn handle_prestige_command(
                     .description(description)
                     .color(color)
                     .footer(CreateEmbedFooter::new(
-                        "With each prestige, your plant grows stronger!",
+                        "Bigger resets, bigger flex. Keep climbing the prestige ladder.",
                     )),
             ),
     );

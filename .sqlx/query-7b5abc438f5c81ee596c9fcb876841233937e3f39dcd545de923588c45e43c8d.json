@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO dicks (user_id, guild_id, length, last_grow, growth_count, dick_of_day_count, \n                                   pvp_wins, pvp_losses, pvp_max_streak, pvp_current_streak,\n                                   cm_won, cm_lost, prestige_level, prestige_points)\n                 VALUES (?, ?, 0, datetime('now', '-2 days'), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "7b5abc438f5c81ee596c9fcb876841233937e3f39dcd545de923588c45e43c8d"
+}

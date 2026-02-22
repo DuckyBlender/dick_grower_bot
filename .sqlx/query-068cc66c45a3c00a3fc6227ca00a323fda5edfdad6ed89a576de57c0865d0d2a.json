@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO prestige_history (user_id, guild_id, prestige_level, length_before_reset)\n         VALUES (?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "068cc66c45a3c00a3fc6227ca00a323fda5edfdad6ed89a576de57c0865d0d2a"
+}

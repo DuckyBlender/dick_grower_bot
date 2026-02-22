@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT last_grow, length, growth_count FROM dicks WHERE user_id = ? AND guild_id = ?",
+  "query": "SELECT last_grow, prestige_level FROM dicks WHERE user_id = ? AND guild_id = ?",
   "describe": {
     "columns": [
       {
@@ -9,13 +9,8 @@
         "type_info": "Text"
       },
       {
-        "name": "length",
+        "name": "prestige_level",
         "ordinal": 1,
-        "type_info": "Integer"
-      },
-      {
-        "name": "growth_count",
-        "ordinal": 2,
         "type_info": "Integer"
       }
     ],
@@ -24,9 +19,8 @@
     },
     "nullable": [
       false,
-      false,
       false
     ]
   },
-  "hash": "73e185b583175fc601188ddd96cc43f9bea039164dc6525f283a9f7fdfc807d8"
+  "hash": "a40d55a7254e4dfa6a940c46d95b8d5c62819fbfa39f1b509edcd9f44937e8f4"
 }

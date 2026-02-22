@@ -24,7 +24,7 @@ pub async fn handle_global_command(
 
     // Get top 10 users globally
     let top_users = match sqlx::query!(
-        "SELECT user_id, length, guild_id FROM plants 
+        "SELECT user_id, length, guild_id FROM dicks 
          ORDER BY length DESC LIMIT 10"
     )
     .fetch_all(&bot.database)
@@ -38,7 +38,7 @@ pub async fn handle_global_command(
                     CreateEmbed::new()
                         .title("⚠️ Global Leaderboard Error")
                         .description(
-                            "Failed to measure all the world's plants. The greenhouse sensors are overwhelmed!",
+                            "Failed to measure all the world's dicks. The server is overwhelmed.",
                         )
                         .color(0xFF0000),
                 ),
@@ -53,9 +53,9 @@ pub async fn handle_global_command(
                 &ctx.http,
                 CreateInteractionResponseFollowup::new().add_embed(
                     CreateEmbed::new()
-                        .title("🌱 No Plants Found")
+                        .title("👀 No Dicks Found")
                         .description(
-                            "No plants have been grown yet in any server. Be the first to grow one with /grow!",
+                            "Nobody has grown their dick anywhere yet. The world awaits a pioneer!",
                         )
                         .color(0xAAAAAA),
                 ),
@@ -65,8 +65,8 @@ pub async fn handle_global_command(
     }
 
     // Fetch bot stats
-    let (server_count_str, plant_count_str) = match get_bot_stats(ctx, bot).await {
-        Ok(stats) => (stats.server_count.to_string(), stats.plant_count.to_string()),
+    let (server_count_str, dick_count_str) = match get_bot_stats(ctx, bot).await {
+        Ok(stats) => (stats.server_count.to_string(), stats.dick_count.to_string()),
         Err(why) => {
             error!("Error fetching bot stats for global command: {:?}", why);
             ("?".to_string(), "?".to_string()) // Use "?" on error
@@ -74,7 +74,7 @@ pub async fn handle_global_command(
     };
 
     // Build the global leaderboard
-    let mut description = "Here are the biggest plants in the entire world:\n\n".to_string();
+    let mut description = "Here are the biggest dicks in the entire world:\n\n".to_string();
 
     for (i, user) in top_users.iter().enumerate() {
         let medal = match i {
@@ -128,7 +128,7 @@ pub async fn handle_global_command(
                                     
                                     name
                                 }
-                                Err(_) => "secret garden".to_string(),
+                                Err(_) => "unknown server".to_string(),
                             }
                         }
                     } else {
@@ -183,18 +183,18 @@ pub async fn handle_global_command(
 
         let comments = [
             format!(
-                "NASA wants to study {}'s plant as a possible oxygen source for Mars!",
+                "NASA wants to study {}'s dick as a possible space elevator!",
                 winner_name
             ),
             format!(
-                "{}'s plant is so big it needs its own greenhouse!",
+                "{} must need a special permit to carry that thing around!",
                 winner_name
             ),
             format!(
-                "{} is making botanists worldwide jealous!",
+                "{} is making the rest of the world feel inadequate!",
                 winner_name
             ),
-            format!("{}'s plant is the envy of gardeners worldwide!", winner_name),
+            format!("{} is the global champion...", winner_name),
         ];
 
         // Select random comment
@@ -206,13 +206,13 @@ pub async fn handle_global_command(
     command.create_followup(&ctx.http,
         CreateInteractionResponseFollowup::new().add_embed(
             CreateEmbed::new()
-                    .title("🌿 Global Plant Growth Leaderboard 🌍")
+                    .title("🌍 Global Dick Leaderboard 🏆")
                     .description(description)
                     .color(0x9B59B6) // Purple
                     .footer(CreateEmbedFooter::new(
                         format!(
-                            "🌐 {} servers | � {} plants growing | Nurture your plant daily with /grow!",
-                            server_count_str, plant_count_str
+                            "🌐 {} servers | 🍆 {} total dicks | World domination starts with your dick. Start growing today with /grow!",
+                            server_count_str, dick_count_str
                     )
                 )),
         ),

@@ -72,9 +72,9 @@ pub async fn handle_viagra_command(
     let now = chrono::Utc::now().naive_utc();
 
     // Check if viagra is currently active
-    if let Some(active_until_str) = user_status.1 {
-        if let Ok(active_until) = NaiveDateTime::parse_from_str(&active_until_str, "%Y-%m-%d %H:%M:%S") {
-            if now < active_until {
+    if let Some(active_until_str) = user_status.1
+        && let Ok(active_until) = NaiveDateTime::parse_from_str(&active_until_str, "%Y-%m-%d %H:%M:%S")
+            && now < active_until {
                 let time_left = active_until - now;
                 let unix_timestamp = chrono::Utc::now().timestamp() + time_left.num_seconds();
                 let discord_timestamp = format!("<t:{}:R>", unix_timestamp);
@@ -97,12 +97,10 @@ pub async fn handle_viagra_command(
                 );
                 return command.create_response(&ctx.http, builder).await;
             }
-        }
-    }
 
     // Check cooldown
-    if let Some(last_used_str) = user_status.0 {
-        if let Ok(last_used) = NaiveDateTime::parse_from_str(&last_used_str, "%Y-%m-%d %H:%M:%S") {
+    if let Some(last_used_str) = user_status.0
+        && let Ok(last_used) = NaiveDateTime::parse_from_str(&last_used_str, "%Y-%m-%d %H:%M:%S") {
             let time_since_last = now - last_used;
             let cooldown_remaining = Duration::hours(VIAGRA_COOLDOWN_HOURS) - time_since_last;
 
@@ -129,7 +127,6 @@ pub async fn handle_viagra_command(
                 return command.create_response(&ctx.http, builder).await;
             }
         }
-    }
 
     // Activate viagra
     let active_until = now + Duration::hours(VIAGRA_DURATION_HOURS);
@@ -197,12 +194,11 @@ pub async fn is_viagra_active(bot: &Bot, user_id: &str, guild_id: &str) -> bool 
     .await
     {
         Ok(Some(record)) => {
-            if let Some(active_until_str) = record.viagra_active_until {
-                if let Ok(active_until) = NaiveDateTime::parse_from_str(&active_until_str, "%Y-%m-%d %H:%M:%S") {
+            if let Some(active_until_str) = record.viagra_active_until
+                && let Ok(active_until) = NaiveDateTime::parse_from_str(&active_until_str, "%Y-%m-%d %H:%M:%S") {
                     let now = chrono::Utc::now().naive_utc();
                     return now < active_until;
                 }
-            }
             false
         }
         _ => false,

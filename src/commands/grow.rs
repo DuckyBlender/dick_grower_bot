@@ -1,4 +1,5 @@
 use crate::Bot;
+use crate::commands::prestige::calculate_prestige_growth_bonus;
 use crate::commands::viagra::is_viagra_active;
 use crate::time::check_cooldown_minutes;
 use crate::utils::ordinal_suffix;
@@ -22,8 +23,8 @@ pub async fn handle_grow_command(
     let guild_id = command.guild_id.unwrap().to_string();
 
     // Check if the user has grown today and get their stats
-    let (growth_count, length, prestige_level) = match sqlx::query!(
-        "SELECT last_grow, length, growth_count, prestige_level FROM dicks WHERE user_id = ? AND guild_id = ?",
+    let prestige_level = match sqlx::query!(
+        "SELECT last_grow, prestige_level FROM dicks WHERE user_id = ? AND guild_id = ?",
         user_id,
         guild_id
     )
@@ -46,11 +47,11 @@ pub async fn handle_grow_command(
                             CreateEmbed::new()
                                 .title("🕒 Hold up, speedy!")
                                 .description(format!(
-                                    "You've already tended to your plant today! Try again in {discord_timestamp}\n\nOverwatering might harm your plant, you know?",
+                                    "You've already played with your dick today! Try again in {discord_timestamp}\n\nExcessive stimulation might cause injuries, you know?",
                                 ))
                                 .color(0xFF5733)
                                 .footer(CreateEmbedFooter::new(
-                                    "Patience is key... especially for your growing plant.",
+                                    "Patience is key... especially for your little buddy.",
                                 ))
                         )
                         .ephemeral(true)
@@ -58,8 +59,7 @@ pub async fn handle_grow_command(
                 return command.create_response(&ctx.http, builder).await;
             }
 
-            // Return user stats
-            (record.growth_count, record.length, record.prestige_level)
+            record.prestige_level
         }
         Ok(None) => {
             // New user, create a record
@@ -84,8 +84,8 @@ pub async fn handle_grow_command(
                 }
             };
 
-            // New user with 0 growth count and 0 prestige level
-            (0, 0, 0)
+            // New user with 0 prestige level
+            0
         }
         Err(why) => {
             error!("Database error: {:?}", why);
@@ -94,7 +94,7 @@ pub async fn handle_grow_command(
                     CreateEmbed::new()
                         .title("⚠️ Database Error")
                         .description(
-                            "Something went wrong with your plant growth. Maybe the universe is telling you something?",
+                            "Something went wrong with your dick growth. Maybe the universe is telling you something?",
                         )
                         .color(0xFF0000),
                 ),
@@ -103,15 +103,14 @@ pub async fn handle_grow_command(
         }
     };
 
-    // Calculate prestige bonus (0.5cm per prestige level)
-    let prestige_bonus = (prestige_level as f64 * 0.5).round() as i64;
-    
+    let prestige_bonus = calculate_prestige_growth_bonus(prestige_level);
+
     // Generate growth amount (always positive now, no more negative growth)
     let base_growth = rand::rng().random_range(1..=10);
-    
+
     // Check if viagra is active for this user
     let viagra_active = is_viagra_active(bot, &user_id, &guild_id).await;
-    
+
     // Apply viagra boost if active (20% increase)
     let growth_before_bonus = if viagra_active {
         let boosted = (base_growth as f64 * 1.2).round() as i64;
@@ -123,7 +122,7 @@ pub async fn handle_grow_command(
     } else {
         base_growth
     };
-    
+
     // Apply prestige bonus
     let growth = growth_before_bonus + prestige_bonus;
 
@@ -218,27 +217,27 @@ pub async fn handle_grow_command(
 
     // Add bonus indicators
     let viagra_text = if viagra_active {
-        " 💊 **(VIAGRA BOOST APPLIED!)**"
+        " + 💊 **VIAGRA BOOST**"
     } else {
         ""
     };
-    
+
     let prestige_text = if prestige_bonus > 0 {
-        format!(" 🌟 **(PRESTIGE BONUS: +{} cm!)**", prestige_bonus)
+        format!(" + 🌟 **PRESTIGE BONUS: +{} cm**", prestige_bonus)
     } else {
         "".to_string()
     };
+
+    let growth_breakdown = format!("{}{}{}", base_growth, viagra_text, prestige_text);
 
     // Create response with funny messages based on growth
     let (title, description, color) = if growth > 15 {
         (
             "🚀 PHENOMENAL GROWTH!",
             format!(
-                "Incredible! Your plant just grew by **{} cm** (base: {}{}, {}{}) and is now a massive **{} cm** tall!\nYou are currently **{}{}** in the server.\n\nNext tending: {}\n\nThis growth rate is unprecedented! Scientists want to study your green thumb!",
+                "Incredible! Your dick just grew by **{} cm** (base: {}) and is now a massive **{} cm** long!\nYou are currently **{}{}** in the server.\n\nNext attempt: {}\n\nThis growth rate is unprecedented! Scientists want to study your massive dick!",
                 growth,
-                base_growth,
-                viagra_text,
-                prestige_text,
+                growth_breakdown,
                 new_length,
                 position,
                 ordinal_suffix(position),
@@ -248,13 +247,11 @@ pub async fn handle_grow_command(
         )
     } else if growth > 10 {
         (
-            "🌿 AMAZING GROWTH!",
+            "🔥 AMAZING GROWTH!",
             format!(
-                "Wow! Your plant grew by **{} cm** (base: {}{}, {}{}) and is now **{} cm** tall!\nYou are currently **{}{}** in the server.\n\nNext tending: {}\n\nYour plant is thriving under your care!",
+                "Wow! Your dick grew by **{} cm** (base: {}) and is now **{} cm** long!\nYou are currently **{}{}** in the server.\n\nNext attempt: {}\n\nYour little buddy is thriving under your care!",
                 growth,
-                base_growth,
-                viagra_text,
-                prestige_text,
+                growth_breakdown,
                 new_length,
                 position,
                 ordinal_suffix(position),
@@ -266,11 +263,9 @@ pub async fn handle_grow_command(
         (
             "🌱 Great Growth!",
             format!(
-                "A solid **{} cm** added (base: {}{}, {}{})! Your plant is now **{} cm** tall.\nYou are currently **{}{}** in the server.\n\nNext tending: {}\n\nConsistent care is key to a healthy plant!",
+                "A solid **{} cm** added (base: {})! Your dick is now **{} cm** long.\nYou are currently **{}{}** in the server.\n\nNext attempt: {}\n\nConsistent effort is key to healthy growth!",
                 growth,
-                base_growth,
-                viagra_text,
-                prestige_text,
+                growth_breakdown,
                 new_length,
                 position,
                 ordinal_suffix(position),
@@ -280,13 +275,11 @@ pub async fn handle_grow_command(
         )
     } else {
         (
-            "🪴 Steady Growth",
+            "📏 Steady Growth",
             format!(
-                "A respectable **{} cm** added (base: {}{}, {}{}). Your plant is now **{} cm** tall.\nYou are currently **{}{}** in the server.\n\nNext tending: {}\n\nSlow and steady wins the race!",
+                "A respectable **{} cm** added (base: {}). Your dick is now **{} cm** long.\nYou are currently **{}{}** in the server.\n\nNext attempt: {}\n\nSlow and steady wins the race!",
                 growth,
-                base_growth,
-                viagra_text,
-                prestige_text,
+                growth_breakdown,
                 new_length,
                 position,
                 ordinal_suffix(position),
@@ -303,7 +296,7 @@ pub async fn handle_grow_command(
                 .description(description)
                 .color(color)
                 .footer(CreateEmbedFooter::new(
-                    "With proper care and patience, your plant will flourish!",
+                    "Remember: it's not about the size, it's about... actually, it is about the size.",
                 )),
         ),
     );

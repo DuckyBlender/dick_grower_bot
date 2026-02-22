@@ -1,0 +1,32 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT length, prestige_level, prestige_points FROM dicks WHERE user_id = ? AND guild_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "length",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "prestige_level",
+        "ordinal": 1,
+        "type_info": "Integer"
+      },
+      {
+        "name": "prestige_points",
+        "ordinal": 2,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "ba1c9b00b7ab5dd9d092ea7bce6bd82bfc2c9170a0f191faaeb2de4bb291c5d9"
+}

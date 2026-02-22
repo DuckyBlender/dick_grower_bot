@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE dicks\n         SET length = 0, prestige_level = ?, prestige_points = ?\n         WHERE user_id = ? AND guild_id = ? AND length >= ? AND prestige_level = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": []
+  },
+  "hash": "0f52661b514dc55393fd3edb9b4057b45b9e62822157e15213a5c34db5cb3292"
+}

@@ -9,15 +9,14 @@ pub async fn handle_help_command(
     command: &CommandInteraction,
 ) -> Result<(), serenity::Error> {
     let description = "\
-        `/grow` - Grow your plant once per 60 minutes (always positive growth now!)\n\
-        `/top` - View the server's plant leaderboard\n\
-        `/global` - View the global plant leaderboard\n\
-        `/pvp <bet>` - Challenge someone to a plant battle with a cm bet\n\
-        `/stats <user>` - View your or someone else's plant stats\n\
-        `/plantoftheday` - Select a random Plant of the Day\n\
-        `/gift <user> <amount>` - Gift some of your growth to another user\n\
-        `/prestige` - Prestige your plant to gain bonuses\n\
-        `/settings` - Configure bot settings for this server\n\
+        `/grow` - Grow your dick once per 60 minutes (always positive growth now!)\n\
+        `/top` - View the server's dick leaderboard\n\
+        `/global` - View the global dick leaderboard\n\
+        `/pvp <bet>` - Challenge someone to a dick battle with a cm bet\n\
+        `/stats <user>` - View your or someone else's dick stats\n\
+        `/dickoftheday` - Select a random Dick of the Day\n\
+        `/gift <user> <amount>` - Gift some of your length to another user\n\
+        `/prestige` - Reset your dick to gain permanent bonuses\n\
         `/viagra` - Boost your growth by 20% for 6 hours (20 hour cooldown)\n\
         `/help` - Show this help message\n\
         \n\
@@ -28,11 +27,11 @@ pub async fn handle_help_command(
     let builder = CreateInteractionResponse::Message(
         CreateInteractionResponseMessage::new().add_embed(
             CreateEmbed::new()
-                .title("🌱 Plant Grower Bot Help")
+                .title("🍆 Dick Grower Bot Help")
                 .description(description)
                 .color(0x00FF00)
                 .footer(CreateEmbedFooter::new(
-                    "Compete with friends for the biggest plant in town!",
+                    "Compete with friends for the biggest dick in town!",
                 )),
         ),
     );

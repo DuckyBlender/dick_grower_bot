@@ -28,7 +28,7 @@ pub async fn handle_gift_command(
                 .add_embed(
                     CreateEmbed::new()
                         .title("❌ Invalid Gift Amount")
-                        .description("You need to gift at least 1 cm! Don't be so stingy with your plant growth.")
+                        .description("You need to gift at least 1 cm! Don't be so stingy with your length.")
                         .color(0xFF0000),
                 )
                 .ephemeral(true),
@@ -57,7 +57,7 @@ pub async fn handle_gift_command(
 
     // Check if giver has enough length
     let giver_length = match sqlx::query!(
-        "SELECT length FROM plants WHERE user_id = ? AND guild_id = ?",
+        "SELECT length FROM dicks WHERE user_id = ? AND guild_id = ?",
         giver_id_str,
         guild_id_str
     )
@@ -72,7 +72,7 @@ pub async fn handle_gift_command(
                 command.user.name, giver_id, guild_id
             );
             match sqlx::query!(
-                "INSERT INTO plants (user_id, guild_id, length, last_grow, growth_count, plant_of_day_count, 
+                "INSERT INTO dicks (user_id, guild_id, length, last_grow, growth_count, dick_of_day_count, 
                                    pvp_wins, pvp_losses, pvp_max_streak, pvp_current_streak,
                                    cm_won, cm_lost)
                  VALUES (?, ?, 0, datetime('now', '-2 days'), 0, 0, 0, 0, 0, 0, 0, 0)",
@@ -96,7 +96,7 @@ pub async fn handle_gift_command(
                     .add_embed(
                         CreateEmbed::new()
                             .title("⚠️ Database Error")
-                            .description("Failed to check your plant growth. The measuring tape broke.")
+                            .description("Failed to check your length. The measuring tape broke.")
                             .color(0xFF0000),
                     )
                     .ephemeral(true),
@@ -110,9 +110,9 @@ pub async fn handle_gift_command(
             CreateInteractionResponseMessage::new()
                 .add_embed(
                     CreateEmbed::new()
-                        .title("❌ Insufficient Growth")
+                        .title("❌ Insufficient Length")
                         .description(format!(
-                            "You only have **{} cm** of plant growth but you're trying to gift **{} cm**!\n\nYou can't give what you don't have. Grow more first!",
+                            "You only have **{} cm** but you're trying to gift **{} cm**!\n\nYou can't give what you don't have. Grow more first!",
                             giver_length, amount
                         ))
                         .color(0xFF0000),
@@ -124,7 +124,7 @@ pub async fn handle_gift_command(
 
     // Check if recipient exists, if not create them
     let _recipient_exists = match sqlx::query!(
-        "SELECT length FROM plants WHERE user_id = ? AND guild_id = ?",
+        "SELECT length FROM dicks WHERE user_id = ? AND guild_id = ?",
         recipient_id_str,
         guild_id_str
     )
@@ -156,7 +156,7 @@ pub async fn handle_gift_command(
                 recipient.name, recipient_user, guild_id
             );
             match sqlx::query!(
-                "INSERT INTO plants (user_id, guild_id, length, last_grow, growth_count, plant_of_day_count, 
+                "INSERT INTO dicks (user_id, guild_id, length, last_grow, growth_count, dick_of_day_count, 
                                    pvp_wins, pvp_losses, pvp_max_streak, pvp_current_streak,
                                    cm_won, cm_lost)
                  VALUES (?, ?, 0, datetime('now', '-2 days'), 0, 0, 0, 0, 0, 0, 0, 0)",
@@ -210,7 +210,7 @@ pub async fn handle_gift_command(
 
     // Remove from giver
     if let Err(why) = sqlx::query!(
-        "UPDATE plants SET length = length - ? WHERE user_id = ? AND guild_id = ?",
+        "UPDATE dicks SET length = length - ? WHERE user_id = ? AND guild_id = ?",
         amount,
         giver_id_str,
         guild_id_str
@@ -235,7 +235,7 @@ pub async fn handle_gift_command(
 
     // Add to recipient
     if let Err(why) = sqlx::query!(
-        "UPDATE plants SET length = length + ? WHERE user_id = ? AND guild_id = ?",
+        "UPDATE dicks SET length = length + ? WHERE user_id = ? AND guild_id = ?",
         amount,
         recipient_id_str,
         guild_id_str
@@ -260,7 +260,7 @@ pub async fn handle_gift_command(
 
     // Get new lengths for history logging
     let giver_new_length = match sqlx::query!(
-        "SELECT length FROM plants WHERE user_id = ? AND guild_id = ?",
+        "SELECT length FROM dicks WHERE user_id = ? AND guild_id = ?",
         giver_id_str,
         guild_id_str
     )
@@ -272,7 +272,7 @@ pub async fn handle_gift_command(
     };
 
     let recipient_new_length = match sqlx::query!(
-        "SELECT length FROM plants WHERE user_id = ? AND guild_id = ?",
+        "SELECT length FROM dicks WHERE user_id = ? AND guild_id = ?",
         recipient_id_str,
         guild_id_str
     )
@@ -355,13 +355,13 @@ pub async fn handle_gift_command(
             .content(format!("{} {}", giver_mention, recipient_mention))
             .add_embed(
                 CreateEmbed::new()
-                    .title("🌱 Gift Successfully Sent!")
+                    .title("🎁 Gift Successfully Sent!")
                     .description(format!(
-                        "{} has generously gifted **{} cm** of plant growth to {}!\n\n{}\n\n**New Growth:**\n• Giver: {} cm\n• Recipient: {} cm",
+                        "{} has generously gifted **{} cm** to {}!\n\n{}\n\n**New Lengths:**\n• Giver: {} cm\n• Recipient: {} cm",
                         giver_mention, amount, recipient_mention, gift_comment, giver_new_length, recipient_new_length
                     ))
                     .color(0x00FF00) // Green
-                    .footer(CreateEmbedFooter::new("Sharing is caring! Spread the love (and the plant growth)!")),
+                    .footer(CreateEmbedFooter::new("Sharing is caring! Spread the love (and the length)!")),
             ),
     );
     return command.create_response(&ctx.http, builder).await;
