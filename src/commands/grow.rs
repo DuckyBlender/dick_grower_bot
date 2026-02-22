@@ -5,7 +5,7 @@ use crate::time::check_cooldown_minutes;
 use crate::utils::ordinal_suffix;
 use chrono::NaiveDateTime;
 use log::{error, info};
-use rand::Rng;
+use rand::RngExt;
 use serenity::all::{
     CommandInteraction, CreateEmbed, CreateEmbedFooter, CreateInteractionResponse,
     CreateInteractionResponseMessage,
@@ -305,7 +305,7 @@ pub async fn handle_grow_command(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use rand::RngExt;
 
     #[test]
     fn test_growth_distribution() {

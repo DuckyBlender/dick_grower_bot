@@ -28,7 +28,9 @@ pub async fn handle_gift_command(
                 .add_embed(
                     CreateEmbed::new()
                         .title("❌ Invalid Gift Amount")
-                        .description("You need to gift at least 1 cm! Don't be so stingy with your length.")
+                        .description(
+                            "You need to gift at least 1 cm! Don't be so stingy with your length.",
+                        )
                         .color(0xFF0000),
                 )
                 .ephemeral(true),
@@ -43,7 +45,9 @@ pub async fn handle_gift_command(
                 .add_embed(
                     CreateEmbed::new()
                         .title("🤨 Self-Gift Detected")
-                        .description("You can't gift yourself! That would defeat the purpose of generosity.")
+                        .description(
+                            "You can't gift yourself! That would defeat the purpose of generosity.",
+                        )
                         .color(0xFF9900),
                 )
                 .ephemeral(true),

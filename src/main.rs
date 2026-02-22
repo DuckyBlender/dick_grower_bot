@@ -219,7 +219,8 @@ impl EventHandler for Handler {
                     .min_int_value(1),
                 ),
             CreateCommand::new("prestige").description("Reset your dick to gain permanent bonuses"),
-            CreateCommand::new("viagra").description("Boost your growth by 20% for 6 hours (20 hour cooldown)"),
+            CreateCommand::new("viagra")
+                .description("Boost your growth by 20% for 6 hours (20 hour cooldown)"),
         ];
 
         if let Err(why) = ctx.http.create_global_commands(&commands).await {

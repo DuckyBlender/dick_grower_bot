@@ -3,7 +3,7 @@ use crate::time::check_utc_day_reset;
 use crate::utils::{get_fun_title_by_rank, ordinal_suffix};
 use chrono::NaiveDateTime;
 use log::{error, info};
-use rand::Rng;
+use rand::{Rng, RngExt};
 use serenity::all::{
     CommandInteraction, CreateEmbed, CreateEmbedFooter, CreateInteractionResponse,
     CreateInteractionResponseMessage, Mentionable,
@@ -228,7 +228,7 @@ pub async fn handle_sotd_command(
 
     let winner_mention = winner_user.mention();
 
-    // Get winner's position in server top  
+    // Get winner's position in server top
     let position = match sqlx::query!(
         "SELECT COUNT(*) as pos FROM dicks WHERE guild_id = ? AND length > ?",
         guild_id,

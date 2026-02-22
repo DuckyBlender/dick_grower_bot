@@ -306,16 +306,15 @@ pub async fn handle_prestige_command(
     };
 
     let builder = CreateInteractionResponse::Message(
-        CreateInteractionResponseMessage::new()
-            .add_embed(
-                CreateEmbed::new()
-                    .title(title)
-                    .description(description)
-                    .color(color)
-                    .footer(CreateEmbedFooter::new(
-                        "Bigger resets, bigger flex. Keep climbing the prestige ladder.",
-                    )),
-            ),
+        CreateInteractionResponseMessage::new().add_embed(
+            CreateEmbed::new()
+                .title(title)
+                .description(description)
+                .color(color)
+                .footer(CreateEmbedFooter::new(
+                    "Bigger resets, bigger flex. Keep climbing the prestige ladder.",
+                )),
+        ),
     );
     return command.create_response(&ctx.http, builder).await;
 }

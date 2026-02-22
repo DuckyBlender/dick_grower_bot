@@ -1,7 +1,7 @@
 use crate::Bot;
 use crate::commands::escape_markdown;
 use crate::utils::get_bot_stats;
-use crate::{GuildNameCache, GUILD_NAME_CACHE_DURATION};
+use crate::{GUILD_NAME_CACHE_DURATION, GuildNameCache};
 use log::{error, info};
 use rand::seq::IndexedRandom;
 use serenity::all::{
@@ -109,23 +109,27 @@ pub async fn handle_global_command(
                         } else {
                             info!("Cache expired for guild {}, fetching new name", cached.name);
                             drop(cache); // Release read lock before acquiring write lock
-                            
+
                             // Cache expired, fetch new name
                             match ctx.http.get_guild(guild_id.into()).await {
                                 Ok(guild) => {
-                                    let name = if guild.features.contains(&"COMMUNITY".to_string()) {
+                                    let name = if guild.features.contains(&"COMMUNITY".to_string())
+                                    {
                                         escape_markdown(&guild.name)
                                     } else {
                                         "private server".to_string()
                                     };
-                                    
+
                                     // Update cache
                                     let mut cache = bot.guild_name_cache.write().await;
-                                    cache.insert(guild_id, GuildNameCache {
-                                        name: name.clone(),
-                                        cached_at: current_time,
-                                    });
-                                    
+                                    cache.insert(
+                                        guild_id,
+                                        GuildNameCache {
+                                            name: name.clone(),
+                                            cached_at: current_time,
+                                        },
+                                    );
+
                                     name
                                 }
                                 Err(_) => "unknown server".to_string(),
@@ -134,7 +138,7 @@ pub async fn handle_global_command(
                     } else {
                         info!("No cached guild name for {}, fetching new name", guild_id);
                         drop(cache); // Release read lock before acquiring write lock
-                        
+
                         // Not in cache, fetch and cache
                         match ctx.http.get_guild(guild_id.into()).await {
                             Ok(guild) => {
@@ -143,14 +147,17 @@ pub async fn handle_global_command(
                                 } else {
                                     "private server".to_string()
                                 };
-                                
+
                                 // Add to cache
                                 let mut cache = bot.guild_name_cache.write().await;
-                                cache.insert(guild_id, GuildNameCache {
-                                    name: name.clone(),
-                                    cached_at: current_time,
-                                });
-                                
+                                cache.insert(
+                                    guild_id,
+                                    GuildNameCache {
+                                        name: name.clone(),
+                                        cached_at: current_time,
+                                    },
+                                );
+
                                 name
                             }
                             Err(_) => "unknown server".to_string(),
