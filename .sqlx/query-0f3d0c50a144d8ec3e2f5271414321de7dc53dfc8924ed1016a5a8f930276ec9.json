@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO length_history (user_id, guild_id, length, growth_amount, growth_type)\n                 VALUES (?, ?, ?, ?, 'streak')",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "0f3d0c50a144d8ec3e2f5271414321de7dc53dfc8924ed1016a5a8f930276ec9"
+}
