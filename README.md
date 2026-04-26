@@ -11,7 +11,6 @@ A Discord bot where users compete to grow the biggest virtual dick in their serv
 - **`/stats <user>`** - View detailed dick statistics
 - **`/help`** - Show command help
 - **`/daily`** - Claim a once-a-day random perk
-- **`/streak`** - Claim rewards for consecutive UTC days with growth
 - **`/events`** - Start or view the current global growth event
 
 ### Battle System
@@ -64,7 +63,6 @@ A Discord bot where users compete to grow the biggest virtual dick in their serv
 | `/gift <user> <amount>` | Transfer length to another user | None |
 | `/viagra` | 20% growth boost for 6 hours | 20 hours |
 | `/daily` | Random daily perk | Daily UTC reset |
-| `/streak` | Reward consecutive daily growth | Daily UTC reset |
 | `/events` | View active event or roll a 50% chance to start one | One active event at a time |
 | `/help` | Show command help | None |
 
@@ -91,7 +89,7 @@ A Discord bot where users compete to grow the biggest virtual dick in their serv
 
 ### Streak Rewards
 - **Tracked by growth**: The first `/grow` on each UTC day advances the streak
-- **Reward**: `/streak` grants cm based on your current streak once per day
+- **Reward**: `/grow` automatically grants cm based on your current streak once per UTC day
 - **Stats**: Current and best daily streak are shown in `/stats`
 
 ### Global Events
@@ -157,7 +155,7 @@ Located in `migrations/` directory:
 ✅ **Optimized Leaderboards** - Better query performance  
 ✅ **Guild Name Caching** - Reduced API calls for global leaderboard  
 ✅ **Daily Rewards** - Random daily perks and cm bonuses  
-✅ **Growth Streaks** - Consecutive daily growth rewards in `/streak` and `/stats`  
+✅ **Growth Streaks** - Consecutive daily growth rewards in `/grow` and `/stats`  
 ✅ **Global Events** - Shared bonus windows across every server  
 
 ### Battle System

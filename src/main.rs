@@ -244,7 +244,6 @@ impl EventHandler for Handler {
                     "gift" => handle_gift_command(&ctx, &command).await,
                     "viagra" => handle_viagra_command(&ctx, &command).await,
                     "daily" => handle_daily_command(&ctx, &command).await,
-                    "streak" => handle_streak_command(&ctx, &command).await,
                     "events" => handle_events_command(&ctx, &command).await,
                     _ => {
                         // For unimplemented commands, respond directly here
@@ -367,7 +366,6 @@ impl EventHandler for Handler {
             CreateCommand::new("viagra")
                 .description("Boost your growth by 20% for 6 hours (20 hour cooldown)"),
             CreateCommand::new("daily").description("Claim a once-a-day random perk"),
-            CreateCommand::new("streak").description("Claim a reward for consecutive daily growth"),
             CreateCommand::new("events")
                 .description("Start or view the current global growth event"),
         ];
@@ -418,11 +416,10 @@ async fn main() {
         .expect("Failed to ensure current database schema");
 
     // Initialize the bot
-let intents =
-    GatewayIntents::GUILDS
-    | GatewayIntents::GUILD_MESSAGES
-    | GatewayIntents::DIRECT_MESSAGES
-    | GatewayIntents::MESSAGE_CONTENT;
+    let intents = GatewayIntents::GUILDS
+        | GatewayIntents::GUILD_MESSAGES
+        | GatewayIntents::DIRECT_MESSAGES
+        | GatewayIntents::MESSAGE_CONTENT;
     let bot_data = Arc::new(Bot {
         database,
         pvp_challenges: RwLock::new(HashMap::new()),

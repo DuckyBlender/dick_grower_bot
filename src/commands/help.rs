@@ -18,7 +18,6 @@ pub async fn handle_help_command(
         `/gift <user> <amount>` - Gift some of your length to another user\n\
         `/viagra` - Boost your growth by 20% for 6 hours (20 hour cooldown)\n\
         `/daily` - Claim a once-a-day random perk\n\
-        `/streak` - Claim a reward for consecutive daily growth\n\
         `/events` - Start or view the current global growth event\n\
         `/help` - Show this help message\n\
         \n\

@@ -7,7 +7,6 @@ pub mod grow;
 pub mod help;
 pub mod pvp;
 pub mod stats;
-pub mod streak;
 pub mod top;
 pub mod viagra;
 
@@ -22,6 +21,5 @@ pub use grow::handle_grow_command;
 pub use help::handle_help_command;
 pub use pvp::{PvpChallenge, handle_pvp_accept, handle_pvp_command};
 pub use stats::handle_stats_command;
-pub use streak::handle_streak_command;
 pub use top::handle_top_command;
 pub use viagra::handle_viagra_command;
