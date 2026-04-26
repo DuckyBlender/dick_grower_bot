@@ -4,7 +4,7 @@ use crate::time::check_cooldown_minutes;
 use crate::utils::ordinal_suffix;
 use chrono::NaiveDateTime;
 use log::{error, info};
-use rand::Rng;
+use rand::RngExt;
 use serenity::all::{
     CommandInteraction, CreateEmbed, CreateEmbedFooter, CreateInteractionResponse,
     CreateInteractionResponseMessage,
@@ -105,10 +105,10 @@ pub async fn handle_grow_command(
 
     // Generate growth amount (always positive now, no more negative growth)
     let base_growth = rand::rng().random_range(1..=10);
-    
+
     // Check if viagra is active for this user
     let viagra_active = is_viagra_active(bot, &user_id, &guild_id).await;
-    
+
     // Apply viagra boost if active (20% increase)
     let growth = if viagra_active {
         let boosted = (base_growth as f64 * 1.2).round() as i64;

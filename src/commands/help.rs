@@ -14,7 +14,7 @@ pub async fn handle_help_command(
         `/global` - View the global dick leaderboard\n\
         `/pvp <bet>` - Challenge someone to a dick battle with a cm bet\n\
         `/stats <user>` - View your or someone else's dick stats\n\
-        `/schlongoftheday` - Select a random Schlong of the Day\n\
+        `/dickoftheday` - Select a random Dick of the Day\n\
         `/gift <user> <amount>` - Gift some of your length to another user\n\
         `/viagra` - Boost your growth by 20% for 6 hours (20 hour cooldown)\n\
         `/help` - Show this help message\n\
