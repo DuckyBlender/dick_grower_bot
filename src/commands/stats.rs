@@ -130,8 +130,9 @@ pub async fn handle_stats_command(
     };
 
     // Get viagra status
-    let (viagra_active, effect_ends, next_available) = get_viagra_status(bot, &user_id, &guild_id).await;
-    
+    let (viagra_active, effect_ends, next_available) =
+        get_viagra_status(bot, &user_id, &guild_id).await;
+
     let viagra_status = if viagra_active {
         if let Some(ends) = effect_ends {
             format!("💊 **ACTIVE** (ends {})", ends)

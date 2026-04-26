@@ -11,6 +11,7 @@ use serenity::builder::CreateCommandOption;
 use serenity::model::application::{CommandOptionType, Interaction};
 use serenity::model::gateway::Ready;
 use serenity::prelude::*;
+use sqlx::Row;
 use sqlx::SqlitePool;
 use sqlx::{Pool, Sqlite};
 use std::collections::HashMap;
@@ -43,6 +44,104 @@ pub struct Bot {
     pub database: Pool<Sqlite>,
     pub pvp_challenges: RwLock<HashMap<String, PvpChallenge>>,
     pub guild_name_cache: RwLock<HashMap<u64, GuildNameCache>>,
+}
+
+async fn table_exists(database: &Pool<Sqlite>, table_name: &str) -> Result<bool, sqlx::Error> {
+    let exists = sqlx::query_scalar::<_, i64>(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?)",
+    )
+    .bind(table_name)
+    .fetch_one(database)
+    .await?;
+
+    Ok(exists == 1)
+}
+
+async fn column_exists(
+    database: &Pool<Sqlite>,
+    table_name: &str,
+    column_name: &str,
+) -> Result<bool, sqlx::Error> {
+    let pragma = format!("PRAGMA table_info({table_name})");
+    let rows = sqlx::query(&pragma).fetch_all(database).await?;
+
+    Ok(rows
+        .iter()
+        .any(|row| row.get::<String, _>("name") == column_name))
+}
+
+async fn run_legacy_schema_migrations(database: &Pool<Sqlite>) -> Result<(), sqlx::Error> {
+    if table_exists(database, "schlongs").await? && !table_exists(database, "dicks").await? {
+        info!("Renaming legacy schlongs table to dicks");
+        sqlx::query("ALTER TABLE schlongs RENAME TO dicks")
+            .execute(database)
+            .await?;
+    }
+
+    if table_exists(database, "guild_schlong_settings").await?
+        && !table_exists(database, "guild_settings").await?
+    {
+        info!("Renaming legacy guild_schlong_settings table to guild_settings");
+        sqlx::query("ALTER TABLE guild_schlong_settings RENAME TO guild_settings")
+            .execute(database)
+            .await?;
+    }
+
+    if table_exists(database, "dicks").await? {
+        let has_legacy_count = column_exists(database, "dicks", "schlong_of_day_count").await?;
+        let has_current_count = column_exists(database, "dicks", "dick_of_day_count").await?;
+
+        if has_legacy_count && !has_current_count {
+            info!("Renaming legacy schlong_of_day_count column to dick_of_day_count");
+            sqlx::query(
+                "ALTER TABLE dicks RENAME COLUMN schlong_of_day_count TO dick_of_day_count",
+            )
+            .execute(database)
+            .await?;
+        } else if has_legacy_count && has_current_count {
+            sqlx::query(
+                "UPDATE dicks
+                 SET dick_of_day_count = schlong_of_day_count
+                 WHERE dick_of_day_count = 0 AND schlong_of_day_count > 0",
+            )
+            .execute(database)
+            .await?;
+        }
+    }
+
+    if table_exists(database, "guild_settings").await? {
+        let has_legacy_dotd = column_exists(database, "guild_settings", "last_sotd").await?;
+        let has_current_dotd = column_exists(database, "guild_settings", "last_dotd").await?;
+
+        if has_legacy_dotd && !has_current_dotd {
+            info!("Renaming legacy last_sotd column to last_dotd");
+            sqlx::query("ALTER TABLE guild_settings RENAME COLUMN last_sotd TO last_dotd")
+                .execute(database)
+                .await?;
+        } else if has_legacy_dotd && has_current_dotd {
+            sqlx::query(
+                "UPDATE guild_settings
+                 SET last_dotd = last_sotd
+                 WHERE last_dotd IS NULL OR last_dotd = ''",
+            )
+            .execute(database)
+            .await?;
+        }
+    }
+
+    if table_exists(database, "length_history").await?
+        && column_exists(database, "length_history", "growth_type").await?
+    {
+        sqlx::query(
+            "UPDATE length_history
+             SET growth_type = 'dotd'
+             WHERE growth_type IN ('sotd', 'schlong_of_day', 'schlongoftheday')",
+        )
+        .execute(database)
+        .await?;
+    }
+
+    Ok(())
 }
 
 #[async_trait]
@@ -95,7 +194,7 @@ impl EventHandler for Handler {
                     "global" => handle_global_command(&ctx, &command).await,
                     "pvp" => handle_pvp_command(&ctx, &command).await,
                     "stats" => handle_stats_command(&ctx, &command).await,
-                    "schlongoftheday" => handle_sotd_command(&ctx, &command).await,
+                    "dickoftheday" => handle_dotd_command(&ctx, &command).await,
                     "help" => handle_help_command(&ctx, &command).await,
                     "gift" => handle_gift_command(&ctx, &command).await,
                     "viagra" => handle_viagra_command(&ctx, &command).await,
@@ -125,25 +224,25 @@ impl EventHandler for Handler {
                     elapsed.as_millis()
                 );
             }
-            Interaction::Component(component) => {
+            Interaction::Component(component)
+                if component.data.custom_id.starts_with("pvp_accept:") =>
+            {
                 // Handle button interactions
-                if component.data.custom_id.starts_with("pvp_accept:") {
-                    info!("Component interaction: {}", component.data.custom_id);
-                    if let Err(why) = handle_pvp_accept(&ctx, &component).await {
-                        error!("Error handling PVP accept: {}", why);
-                        if let Err(e) = component
-                            .create_response(
-                                &ctx.http,
-                                CreateInteractionResponse::Message(
-                                    CreateInteractionResponseMessage::new()
-                                        .content("Something went wrong processing your request")
-                                        .ephemeral(true),
-                                ),
-                            )
-                            .await
-                        {
-                            error!("Error responding to component interaction: {}", e);
-                        }
+                info!("Component interaction: {}", component.data.custom_id);
+                if let Err(why) = handle_pvp_accept(&ctx, &component).await {
+                    error!("Error handling PVP accept: {}", why);
+                    if let Err(e) = component
+                        .create_response(
+                            &ctx.http,
+                            CreateInteractionResponse::Message(
+                                CreateInteractionResponseMessage::new()
+                                    .content("Something went wrong processing your request")
+                                    .ephemeral(true),
+                            ),
+                        )
+                        .await
+                    {
+                        error!("Error responding to component interaction: {}", e);
                     }
                 }
             }
@@ -176,7 +275,7 @@ impl EventHandler for Handler {
             CreateCommand::new("global")
                 .description("Show the top players with the biggest weapons across all servers"),
             CreateCommand::new("pvp")
-                .description("Start a schlong battle")
+                .description("Start a dick battle")
                 .add_option(
                     CreateCommandOption::new(
                         CommandOptionType::Integer,
@@ -196,7 +295,7 @@ impl EventHandler for Handler {
                     )
                     .required(false),
                 ),
-            CreateCommand::new("schlongoftheday").description("Randomly select a Schlong of the Day"),
+            CreateCommand::new("dickoftheday").description("Randomly select a Dick of the Day"),
             CreateCommand::new("help").description("Show help information about the bot commands"),
             CreateCommand::new("gift")
                 .description("Gift some of your length to another user")
@@ -217,7 +316,8 @@ impl EventHandler for Handler {
                     .required(true)
                     .min_int_value(1),
                 ),
-            CreateCommand::new("viagra").description("Boost your growth by 20% for 6 hours (20 hour cooldown)"),
+            CreateCommand::new("viagra")
+                .description("Boost your growth by 20% for 6 hours (20 hour cooldown)"),
         ];
 
         if let Err(why) = ctx.http.create_global_commands(&commands).await {
@@ -260,6 +360,10 @@ async fn main() {
     let database = SqlitePool::connect(&env::var("DATABASE_URL").unwrap())
         .await
         .expect("Coudn't connect to the sqlite database");
+
+    run_legacy_schema_migrations(&database)
+        .await
+        .expect("Failed to migrate legacy database schema");
 
     // Initialize the bot
     let intents = GatewayIntents::GUILDS;

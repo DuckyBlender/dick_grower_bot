@@ -24,7 +24,7 @@ pub async fn get_bot_stats(ctx: &Context, bot: &Bot) -> Result<BotStats, sqlx::E
 
 pub fn get_fun_title_by_rank(rank: usize) -> &'static str {
     match rank {
-        1 => "GOD OF SCHLONGS",
+        1 => "GOD OF DICKS",
         2 => "Legendary Organ",
         3 => "Impressive Member",
         4..=10 => "Rising Star",

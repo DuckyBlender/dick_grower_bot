@@ -2,7 +2,7 @@ use crate::Bot;
 use crate::escape_markdown;
 use chrono::Duration;
 use log::{error, info};
-use rand::Rng;
+use rand::RngExt;
 use serenity::all::{
     ButtonStyle, CommandInteraction, CreateActionRow, CreateButton, CreateEmbed, CreateEmbedFooter,
     CreateInteractionResponse, CreateInteractionResponseMessage, Mentionable,

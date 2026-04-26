@@ -3,7 +3,7 @@ use crate::time::check_utc_day_reset;
 use crate::utils::{get_fun_title_by_rank, ordinal_suffix};
 use chrono::NaiveDateTime;
 use log::{error, info};
-use rand::Rng;
+use rand::RngExt;
 use serenity::all::{
     CommandInteraction, CreateEmbed, CreateEmbedFooter, CreateInteractionResponse,
     CreateInteractionResponseMessage, Mentionable,
@@ -12,11 +12,11 @@ use serenity::model::id::UserId;
 use serenity::prelude::*;
 
 /// Selects a random winner index from the list of active users.
-pub fn choose_sotd_winner<R: Rng>(rng: &mut R, active_users_len: usize) -> usize {
+pub fn choose_dotd_winner<R: RngExt>(rng: &mut R, active_users_len: usize) -> usize {
     rng.random_range(0..active_users_len)
 }
 
-pub async fn handle_sotd_command(
+pub async fn handle_dotd_command(
     ctx: &Context,
     command: &CommandInteraction,
 ) -> Result<(), serenity::Error> {
@@ -130,14 +130,14 @@ pub async fn handle_sotd_command(
 
     // Log all potential winners
     info!(
-        "Potential SOTD candidates: {:?}",
+        "Potential DOTD candidates: {:?}",
         active_users.iter().map(|u| &u.user_id).collect::<Vec<_>>()
     );
 
     // Select a random winner BEFORE any .await after this point
     let winner_idx = {
         let mut rng = rand::rng();
-        choose_sotd_winner(&mut rng, active_users.len())
+        choose_dotd_winner(&mut rng, active_users.len())
     };
     info!(
         "Generating a random number between 0 and {}: {}",
@@ -228,7 +228,7 @@ pub async fn handle_sotd_command(
 
     let winner_mention = winner_user.mention();
 
-    // Get winner's position in server top  
+    // Get winner's position in server top
     let position = match sqlx::query!(
         "SELECT COUNT(*) as pos FROM dicks WHERE guild_id = ? AND length > ?",
         guild_id,
@@ -278,7 +278,7 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(42);
         let runs = 1000;
         for _ in 0..runs {
-            let idx = choose_sotd_winner(&mut rng, 3);
+            let idx = choose_dotd_winner(&mut rng, 3);
             counts[idx] += 1;
         }
         for (i, &count) in counts.iter().enumerate() {

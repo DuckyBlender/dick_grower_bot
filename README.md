@@ -1,7 +1,6 @@
-# 🍆 Schlong Grower Bot
+# 🍆 Dick Grower Bot
 
 A Discord bot where users compete to grow the biggest virtual dick in their server! Built with Rust using Serenity and SQLx.
-Originally this bot was called "Dick Grower Bot", but was later re-named to somewhat comply with the Discord Community Guidelines for bot verification.
 
 ## Features
 
@@ -20,7 +19,7 @@ Originally this bot was called "Dick Grower Bot", but was later re-named to some
 
 ### Social Features
 - **`/gift <user> <amount>`** - Gift some of your length to another user
-- **`/schlongoftheday`** - Random daily Schlong of the Day selection with bonuses
+- **`/dickoftheday`** - Random daily Dick of the Day selection with bonuses
 - Length sharing and generosity mechanics
 
 ### Enhancement System
@@ -55,7 +54,7 @@ Originally this bot was called "Dick Grower Bot", but was later re-named to some
 | `/global` | Global leaderboard | None |
 | `/pvp <bet>` | Dick battle with cm betting | None |
 | `/stats <user>` | View user statistics | None |
-| `/schlongoftheday` | Random daily winner selection | 24 hours |
+| `/dickoftheday` | Random daily winner selection | 24 hours |
 | `/gift <user> <amount>` | Transfer length to another user | None |
 | `/viagra` | 20% growth boost for 6 hours | 72 hours |
 | `/help` | Show command help | None |
@@ -74,7 +73,7 @@ Originally this bot was called "Dick Grower Bot", but was later re-named to some
 - **Visual indicator** in growth messages
 
 ### Special Events
-- **Schlong of the Day**: 10-25 cm bonus (daily)
+- **Dick of the Day**: 10-25 cm bonus (daily)
 - **PVP Victories**: Win opponent's bet amount
 - **Gifts**: Receive length from generous users
 
