@@ -1,4 +1,5 @@
 use crate::Bot;
+use crate::commands::events::get_active_global_event;
 
 use chrono::{Duration, NaiveDateTime};
 use log::{error, info};
@@ -131,8 +132,14 @@ pub async fn handle_viagra_command(
         }
     }
 
+    let active_event = get_active_global_event(bot).await;
+    let viagra_duration_hours = active_event
+        .as_ref()
+        .and_then(|event| event.viagra_duration_hours())
+        .unwrap_or(VIAGRA_DURATION_HOURS);
+
     // Activate viagra
-    let active_until = now + Duration::hours(VIAGRA_DURATION_HOURS);
+    let active_until = now + Duration::hours(viagra_duration_hours);
     let active_until_str = active_until.format("%Y-%m-%d %H:%M:%S").to_string();
     let now_str = now.format("%Y-%m-%d %H:%M:%S").to_string();
 
@@ -163,21 +170,26 @@ pub async fn handle_viagra_command(
 
     // Calculate when effect ends
     let effect_ends_unix =
-        chrono::Utc::now().timestamp() + Duration::hours(VIAGRA_DURATION_HOURS).num_seconds();
+        chrono::Utc::now().timestamp() + Duration::hours(viagra_duration_hours).num_seconds();
     let effect_ends_discord = format!("<t:{}:R>", effect_ends_unix);
 
     // Calculate next viagra availability
     let next_viagra_unix =
         chrono::Utc::now().timestamp() + Duration::hours(VIAGRA_COOLDOWN_HOURS).num_seconds();
     let next_viagra_discord = format!("<t:{}:R>", next_viagra_unix);
+    let event_text = active_event
+        .as_ref()
+        .and_then(|event| event.viagra_duration_hours().map(|_| event.name.clone()))
+        .map(|name| format!("\n• Global event active: **{}**", name))
+        .unwrap_or_default();
 
     let builder = CreateInteractionResponse::Message(
         CreateInteractionResponseMessage::new().add_embed(
             CreateEmbed::new()
                 .title("💊 VIAGRA ACTIVATED! 🔥")
                 .description(format!(
-                    "You've taken the magical blue pill! 💎\n\n**Enhancement Details:**\n• +20% growth boost for all /grow commands\n• Effect duration: 6 hours\n• Effect ends: {}\n\n**Next viagra available:** {}\n\nYour dick is now supercharged! Get growing! 🚀",
-                    effect_ends_discord, next_viagra_discord
+                    "You've taken the magical blue pill! 💎\n\n**Enhancement Details:**\n• +20% growth boost for all /grow commands\n• Effect duration: {} hours{}\n• Effect ends: {}\n\n**Next viagra available:** {}\n\nYour dick is now supercharged! Get growing! 🚀",
+                    viagra_duration_hours, event_text, effect_ends_discord, next_viagra_discord
                 ))
                 .color(0x3498DB) // Blue like viagra
                 .footer(CreateEmbedFooter::new(

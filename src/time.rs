@@ -19,11 +19,10 @@ pub fn check_utc_day_reset(last_time: &NaiveDateTime) -> Duration {
     }
 }
 
-// Combined function that checks if 60 minutes passed and returns time remaining
-pub fn check_cooldown_minutes(last_time: &NaiveDateTime) -> Duration {
+pub fn check_cooldown_with_minutes(last_time: &NaiveDateTime, cooldown_minutes: i64) -> Duration {
     let now = Utc::now().naive_utc();
     let duration = now - *last_time;
-    let threshold = Duration::minutes(60);
+    let threshold = Duration::minutes(cooldown_minutes);
 
     let has_passed = duration >= threshold;
     if has_passed {

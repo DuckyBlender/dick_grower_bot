@@ -47,6 +47,14 @@ pub fn ordinal_suffix(n: usize) -> &'static str {
     }
 }
 
+pub fn pluralize(count: i64, singular: &str, plural: &str) -> String {
+    if count == 1 {
+        format!("{count} {singular}")
+    } else {
+        format!("{count} {plural}")
+    }
+}
+
 pub fn escape_markdown(text: &str) -> String {
     text.replace('\\', "\\\\")
         .replace('*', "\\*")

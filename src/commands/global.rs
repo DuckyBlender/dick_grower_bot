@@ -11,6 +11,47 @@ use serenity::model::id::UserId;
 use serenity::prelude::*;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+async fn get_cached_guild_name(ctx: &Context, bot: &Bot, guild_id: u64) -> String {
+    let current_time = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+
+    {
+        let cache = bot.guild_name_cache.read().await;
+        if let Some(cached) = cache.get(&guild_id)
+            && current_time.saturating_sub(cached.cached_at) < GUILD_NAME_CACHE_DURATION
+        {
+            info!("Using cached guild name for guild {}", guild_id);
+            return cached.name.clone();
+        }
+    }
+
+    info!("Refreshing cached guild name for guild {}", guild_id);
+
+    let name = match ctx.http.get_guild(guild_id.into()).await {
+        Ok(guild) => {
+            if guild.features.contains(&"COMMUNITY".to_string()) {
+                escape_markdown(&guild.name)
+            } else {
+                "private server".to_string()
+            }
+        }
+        Err(_) => "unknown server".to_string(),
+    };
+
+    let mut cache = bot.guild_name_cache.write().await;
+    cache.insert(
+        guild_id,
+        GuildNameCache {
+            name: name.clone(),
+            cached_at: current_time,
+        },
+    );
+
+    name
+}
+
 pub async fn handle_global_command(
     ctx: &Context,
     command: &CommandInteraction,
@@ -93,78 +134,7 @@ pub async fn handle_global_command(
         };
 
         let guild_name = match user.guild_id.parse::<u64>() {
-            Ok(guild_id) => {
-                let current_time = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs();
-
-                // Check cache first
-                {
-                    let cache = bot.guild_name_cache.read().await;
-                    if let Some(cached) = cache.get(&guild_id) {
-                        if current_time - cached.cached_at < GUILD_NAME_CACHE_DURATION {
-                            info!("Using cached guild name for {}", cached.name);
-                            cached.name.clone()
-                        } else {
-                            info!("Cache expired for guild {}, fetching new name", cached.name);
-                            drop(cache); // Release read lock before acquiring write lock
-
-                            // Cache expired, fetch new name
-                            match ctx.http.get_guild(guild_id.into()).await {
-                                Ok(guild) => {
-                                    let name = if guild.features.contains(&"COMMUNITY".to_string())
-                                    {
-                                        escape_markdown(&guild.name)
-                                    } else {
-                                        "private server".to_string()
-                                    };
-
-                                    // Update cache
-                                    let mut cache = bot.guild_name_cache.write().await;
-                                    cache.insert(
-                                        guild_id,
-                                        GuildNameCache {
-                                            name: name.clone(),
-                                            cached_at: current_time,
-                                        },
-                                    );
-
-                                    name
-                                }
-                                Err(_) => "unknown server".to_string(),
-                            }
-                        }
-                    } else {
-                        info!("No cached guild name for {}, fetching new name", guild_id);
-                        drop(cache); // Release read lock before acquiring write lock
-
-                        // Not in cache, fetch and cache
-                        match ctx.http.get_guild(guild_id.into()).await {
-                            Ok(guild) => {
-                                let name = if guild.features.contains(&"COMMUNITY".to_string()) {
-                                    escape_markdown(&guild.name)
-                                } else {
-                                    "private server".to_string()
-                                };
-
-                                // Add to cache
-                                let mut cache = bot.guild_name_cache.write().await;
-                                cache.insert(
-                                    guild_id,
-                                    GuildNameCache {
-                                        name: name.clone(),
-                                        cached_at: current_time,
-                                    },
-                                );
-
-                                name
-                            }
-                            Err(_) => "unknown server".to_string(),
-                        }
-                    }
-                }
-            }
+            Ok(guild_id) => get_cached_guild_name(ctx, bot, guild_id).await,
             Err(_) => "unknown server".to_string(),
         };
 

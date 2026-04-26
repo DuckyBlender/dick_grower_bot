@@ -1,8 +1,9 @@
 use crate::Bot;
 use crate::commands::escape_markdown;
+use crate::commands::events::get_active_global_event;
 use crate::commands::viagra::get_viagra_status;
-use crate::time::check_cooldown_minutes;
-use crate::utils::{get_fun_title_by_rank, ordinal_suffix};
+use crate::time::check_cooldown_with_minutes;
+use crate::utils::{get_fun_title_by_rank, ordinal_suffix, pluralize};
 use chrono::NaiveDateTime;
 use log::error;
 use serenity::all::{
@@ -10,6 +11,21 @@ use serenity::all::{
     CreateInteractionResponseMessage,
 };
 use serenity::prelude::*;
+use sqlx::Row;
+
+struct UserStats {
+    length: i64,
+    dick_of_day_count: i64,
+    last_grow: String,
+    pvp_wins: i64,
+    pvp_losses: i64,
+    pvp_max_streak: i64,
+    pvp_current_streak: i64,
+    cm_won: i64,
+    cm_lost: i64,
+    daily_streak: i64,
+    best_daily_streak: i64,
+}
 
 pub async fn handle_stats_command(
     ctx: &Context,
@@ -41,19 +57,31 @@ pub async fn handle_stats_command(
     let guild_id = command.guild_id.unwrap().to_string();
 
     // Get user stats
-    let user_stats = match sqlx::query!(
+    let user_stats = match sqlx::query(
         "SELECT length, dick_of_day_count, last_grow, 
                 pvp_wins, pvp_losses, pvp_max_streak, pvp_current_streak,
-                cm_won, cm_lost
+                cm_won, cm_lost, daily_streak, best_daily_streak
          FROM dicks 
          WHERE user_id = ? AND guild_id = ?",
-        user_id,
-        guild_id
     )
+    .bind(&user_id)
+    .bind(&guild_id)
     .fetch_optional(&bot.database)
     .await
     {
-        Ok(Some(stats)) => stats,
+        Ok(Some(row)) => UserStats {
+            length: row.try_get("length").unwrap_or_default(),
+            dick_of_day_count: row.try_get("dick_of_day_count").unwrap_or_default(),
+            last_grow: row.try_get("last_grow").unwrap_or_default(),
+            pvp_wins: row.try_get("pvp_wins").unwrap_or_default(),
+            pvp_losses: row.try_get("pvp_losses").unwrap_or_default(),
+            pvp_max_streak: row.try_get("pvp_max_streak").unwrap_or_default(),
+            pvp_current_streak: row.try_get("pvp_current_streak").unwrap_or_default(),
+            cm_won: row.try_get("cm_won").unwrap_or_default(),
+            cm_lost: row.try_get("cm_lost").unwrap_or_default(),
+            daily_streak: row.try_get("daily_streak").unwrap_or_default(),
+            best_daily_streak: row.try_get("best_daily_streak").unwrap_or_default(),
+        },
         Ok(None) => {
             let msg = if is_self {
                 "You haven't started growing your dick yet! Use /grow to begin your journey to greatness."
@@ -113,7 +141,12 @@ pub async fn handle_stats_command(
         .unwrap_or_default();
 
     // Check if user can grow today
-    let time_left = check_cooldown_minutes(&last_grow);
+    let active_event = get_active_global_event(bot).await;
+    let cooldown_minutes = active_event
+        .as_ref()
+        .and_then(|event| event.grow_cooldown_minutes())
+        .unwrap_or(60);
+    let time_left = check_cooldown_with_minutes(&last_grow, cooldown_minutes);
     let unix_timestamp = chrono::Utc::now().timestamp() + time_left.num_seconds();
     let discord_timestamp = format!("<t:{}:R>", unix_timestamp);
 
@@ -201,7 +234,19 @@ pub async fn handle_stats_command(
                     .field("Title", fun_title, true)
                     .field(
                         "Dick of the Day",
-                        format!("**{} time(s)**", user_stats.dick_of_day_count),
+                        format!(
+                            "**{}**",
+                            pluralize(user_stats.dick_of_day_count, "time", "times")
+                        ),
+                        true,
+                    )
+                    .field(
+                        "Daily Growth Streak",
+                        format!(
+                            "**{}**\nBest: **{}**",
+                            pluralize(user_stats.daily_streak, "day", "days"),
+                            pluralize(user_stats.best_daily_streak, "day", "days")
+                        ),
                         true,
                     )
                     .field("Growth Status", growth_status, false)
