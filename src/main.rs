@@ -31,8 +31,8 @@ impl TypeMapKey for Bot {
     type Value = Arc<Bot>;
 }
 
-// Guild name cache duration in seconds (12 hours)
-const GUILD_NAME_CACHE_DURATION: u64 = 12 * 60 * 60;
+// Guild name cache duration in seconds
+const GUILD_NAME_CACHE_DURATION: u64 = 60 * 60 * 12; // 12 hours
 
 #[derive(Clone)]
 pub struct GuildNameCache {
@@ -70,76 +70,121 @@ async fn column_exists(
         .any(|row| row.get::<String, _>("name") == column_name))
 }
 
-async fn run_legacy_schema_migrations(database: &Pool<Sqlite>) -> Result<(), sqlx::Error> {
-    if table_exists(database, "schlongs").await? && !table_exists(database, "dicks").await? {
-        info!("Renaming legacy schlongs table to dicks");
-        sqlx::query("ALTER TABLE schlongs RENAME TO dicks")
-            .execute(database)
-            .await?;
+async fn add_column_if_missing(
+    database: &Pool<Sqlite>,
+    table_name: &str,
+    column_name: &str,
+    column_definition: &str,
+) -> Result<(), sqlx::Error> {
+    if !column_exists(database, table_name, column_name).await? {
+        let query = format!("ALTER TABLE {table_name} ADD COLUMN {column_definition}");
+        sqlx::query(&query).execute(database).await?;
     }
 
-    if table_exists(database, "guild_schlong_settings").await?
-        && !table_exists(database, "guild_settings").await?
-    {
-        info!("Renaming legacy guild_schlong_settings table to guild_settings");
-        sqlx::query("ALTER TABLE guild_schlong_settings RENAME TO guild_settings")
-            .execute(database)
-            .await?;
-    }
+    Ok(())
+}
 
+async fn ensure_current_schema(database: &Pool<Sqlite>) -> Result<(), sqlx::Error> {
     if table_exists(database, "dicks").await? {
-        let has_legacy_count = column_exists(database, "dicks", "schlong_of_day_count").await?;
-        let has_current_count = column_exists(database, "dicks", "dick_of_day_count").await?;
-
-        if has_legacy_count && !has_current_count {
-            info!("Renaming legacy schlong_of_day_count column to dick_of_day_count");
-            sqlx::query(
-                "ALTER TABLE dicks RENAME COLUMN schlong_of_day_count TO dick_of_day_count",
-            )
-            .execute(database)
-            .await?;
-        } else if has_legacy_count && has_current_count {
-            sqlx::query(
-                "UPDATE dicks
-                 SET dick_of_day_count = schlong_of_day_count
-                 WHERE dick_of_day_count = 0 AND schlong_of_day_count > 0",
-            )
-            .execute(database)
-            .await?;
-        }
-    }
-
-    if table_exists(database, "guild_settings").await? {
-        let has_legacy_dotd = column_exists(database, "guild_settings", "last_sotd").await?;
-        let has_current_dotd = column_exists(database, "guild_settings", "last_dotd").await?;
-
-        if has_legacy_dotd && !has_current_dotd {
-            info!("Renaming legacy last_sotd column to last_dotd");
-            sqlx::query("ALTER TABLE guild_settings RENAME COLUMN last_sotd TO last_dotd")
-                .execute(database)
-                .await?;
-        } else if has_legacy_dotd && has_current_dotd {
-            sqlx::query(
-                "UPDATE guild_settings
-                 SET last_dotd = last_sotd
-                 WHERE last_dotd IS NULL OR last_dotd = ''",
-            )
-            .execute(database)
-            .await?;
-        }
-    }
-
-    if table_exists(database, "length_history").await?
-        && column_exists(database, "length_history", "growth_type").await?
-    {
-        sqlx::query(
-            "UPDATE length_history
-             SET growth_type = 'dotd'
-             WHERE growth_type IN ('sotd', 'schlong_of_day', 'schlongoftheday')",
+        add_column_if_missing(
+            database,
+            "dicks",
+            "daily_last_claimed",
+            "daily_last_claimed TEXT DEFAULT NULL",
         )
-        .execute(database)
+        .await?;
+        add_column_if_missing(
+            database,
+            "dicks",
+            "daily_growth_boost_percent",
+            "daily_growth_boost_percent INTEGER NOT NULL DEFAULT 0",
+        )
+        .await?;
+        add_column_if_missing(
+            database,
+            "dicks",
+            "daily_cooldown_skips",
+            "daily_cooldown_skips INTEGER NOT NULL DEFAULT 0",
+        )
+        .await?;
+        add_column_if_missing(
+            database,
+            "dicks",
+            "daily_streak_savers",
+            "daily_streak_savers INTEGER NOT NULL DEFAULT 0",
+        )
+        .await?;
+        add_column_if_missing(
+            database,
+            "dicks",
+            "daily_lucky_rolls",
+            "daily_lucky_rolls INTEGER NOT NULL DEFAULT 0",
+        )
+        .await?;
+        add_column_if_missing(
+            database,
+            "dicks",
+            "daily_streak",
+            "daily_streak INTEGER NOT NULL DEFAULT 0",
+        )
+        .await?;
+        add_column_if_missing(
+            database,
+            "dicks",
+            "best_daily_streak",
+            "best_daily_streak INTEGER NOT NULL DEFAULT 0",
+        )
+        .await?;
+        add_column_if_missing(
+            database,
+            "dicks",
+            "last_streak_date",
+            "last_streak_date TEXT DEFAULT NULL",
+        )
+        .await?;
+        add_column_if_missing(
+            database,
+            "dicks",
+            "streak_last_claimed",
+            "streak_last_claimed TEXT DEFAULT NULL",
+        )
         .await?;
     }
+
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS global_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_type TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT NOT NULL,
+            bonus_value INTEGER NOT NULL,
+            pot_amount INTEGER NOT NULL DEFAULT 0,
+            resolved_at TEXT DEFAULT NULL,
+            started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            ends_at TEXT NOT NULL
+        )",
+    )
+    .execute(database)
+    .await?;
+
+    add_column_if_missing(
+        database,
+        "global_events",
+        "pot_amount",
+        "pot_amount INTEGER NOT NULL DEFAULT 0",
+    )
+    .await?;
+    add_column_if_missing(
+        database,
+        "global_events",
+        "resolved_at",
+        "resolved_at TEXT DEFAULT NULL",
+    )
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_global_events_ends_at ON global_events(ends_at)")
+        .execute(database)
+        .await?;
 
     Ok(())
 }
@@ -198,6 +243,9 @@ impl EventHandler for Handler {
                     "help" => handle_help_command(&ctx, &command).await,
                     "gift" => handle_gift_command(&ctx, &command).await,
                     "viagra" => handle_viagra_command(&ctx, &command).await,
+                    "daily" => handle_daily_command(&ctx, &command).await,
+                    "streak" => handle_streak_command(&ctx, &command).await,
+                    "events" => handle_events_command(&ctx, &command).await,
                     _ => {
                         // For unimplemented commands, respond directly here
                         command
@@ -318,6 +366,10 @@ impl EventHandler for Handler {
                 ),
             CreateCommand::new("viagra")
                 .description("Boost your growth by 20% for 6 hours (20 hour cooldown)"),
+            CreateCommand::new("daily").description("Claim a once-a-day random perk"),
+            CreateCommand::new("streak").description("Claim a reward for consecutive daily growth"),
+            CreateCommand::new("events")
+                .description("Start or view the current global growth event"),
         ];
 
         if let Err(why) = ctx.http.create_global_commands(&commands).await {
@@ -361,13 +413,16 @@ async fn main() {
         .await
         .expect("Coudn't connect to the sqlite database");
 
-    run_legacy_schema_migrations(&database)
+    ensure_current_schema(&database)
         .await
-        .expect("Failed to migrate legacy database schema");
+        .expect("Failed to ensure current database schema");
 
     // Initialize the bot
-    let intents = GatewayIntents::GUILDS;
-
+let intents =
+    GatewayIntents::GUILDS
+    | GatewayIntents::GUILD_MESSAGES
+    | GatewayIntents::DIRECT_MESSAGES
+    | GatewayIntents::MESSAGE_CONTENT;
     let bot_data = Arc::new(Bot {
         database,
         pvp_challenges: RwLock::new(HashMap::new()),

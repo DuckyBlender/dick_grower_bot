@@ -1,6 +1,11 @@
 use crate::Bot;
+use crate::commands::daily::{
+    consume_cooldown_skip, consume_daily_growth_boost_percent, consume_lucky_roll,
+    update_growth_streak,
+};
+use crate::commands::events::{add_to_community_pot, get_active_global_event};
 use crate::commands::viagra::is_viagra_active;
-use crate::time::check_cooldown_minutes;
+use crate::time::check_cooldown_with_minutes;
 use crate::utils::ordinal_suffix;
 use chrono::NaiveDateTime;
 use log::{error, info};
@@ -11,6 +16,9 @@ use serenity::all::{
 };
 use serenity::prelude::*;
 
+const BASE_GROWTH_MIN_CM: i64 = 1;
+const BASE_GROWTH_MAX_CM: i64 = 10;
+
 pub async fn handle_grow_command(
     ctx: &Context,
     command: &CommandInteraction,
@@ -20,6 +28,7 @@ pub async fn handle_grow_command(
 
     let user_id = command.user.id.to_string();
     let guild_id = command.guild_id.unwrap().to_string();
+    let mut cooldown_skip_used = false;
 
     // Check if the user has grown today and get their stats
     let _user_stats = match sqlx::query!(
@@ -34,13 +43,21 @@ pub async fn handle_grow_command(
             let last_grow = NaiveDateTime::parse_from_str(&record.last_grow, "%Y-%m-%d %H:%M:%S")
                 .unwrap_or_default();
 
-            let time_left = check_cooldown_minutes(&last_grow);
+            let active_event = get_active_global_event(bot).await;
+            let cooldown_minutes = active_event
+                .as_ref()
+                .and_then(|event| event.grow_cooldown_minutes())
+                .unwrap_or(60);
+            let time_left = check_cooldown_with_minutes(&last_grow, cooldown_minutes);
             // Format time_left into discord timestamp
             let unix_timestamp = chrono::Utc::now().timestamp() + time_left.num_seconds();
             let discord_timestamp = format!("<t:{}:R>", unix_timestamp);
 
             if !time_left.is_zero() {
-                let builder = CreateInteractionResponse::Message(
+                if consume_cooldown_skip(bot, &user_id, &guild_id).await {
+                    cooldown_skip_used = true;
+                } else {
+                    let builder = CreateInteractionResponse::Message(
                     CreateInteractionResponseMessage::new()
                         .add_embed(
                             CreateEmbed::new()
@@ -55,7 +72,8 @@ pub async fn handle_grow_command(
                         )
                         .ephemeral(true)
                 );
-                return command.create_response(&ctx.http, builder).await;
+                    return command.create_response(&ctx.http, builder).await;
+                }
             }
 
             // Return user stats
@@ -103,23 +121,77 @@ pub async fn handle_grow_command(
         }
     };
 
-    // Generate growth amount (always positive now, no more negative growth)
-    let base_growth = rand::rng().random_range(1..=10);
+    let active_event = get_active_global_event(bot).await;
+
+    let (growth_min, growth_max) = active_event
+        .as_ref()
+        .and_then(|event| event.growth_range())
+        .unwrap_or((BASE_GROWTH_MIN_CM, BASE_GROWTH_MAX_CM));
+    let first_roll = rand::rng().random_range(growth_min..=growth_max);
+    let lucky_roll_active = consume_lucky_roll(bot, &user_id, &guild_id).await;
+    let event_double_roll = active_event
+        .as_ref()
+        .is_some_and(|event| event.rolls_growth_twice());
+    let base_growth = if lucky_roll_active || event_double_roll {
+        let second_roll = rand::rng().random_range(growth_min..=growth_max);
+        first_roll.max(second_roll)
+    } else {
+        first_roll
+    };
 
     // Check if viagra is active for this user
     let viagra_active = is_viagra_active(bot, &user_id, &guild_id).await;
+    let daily_boost_percent = consume_daily_growth_boost_percent(bot, &user_id, &guild_id).await;
 
-    // Apply viagra boost if active (20% increase)
-    let growth = if viagra_active {
-        let boosted = (base_growth as f64 * 1.2).round() as i64;
+    let mut multiplier = 1.0;
+    let mut boost_notes = Vec::new();
+
+    if cooldown_skip_used {
+        boost_notes.push("⏩ Cooldown skip".to_string());
+    }
+
+    if lucky_roll_active {
+        boost_notes.push("🍀 Lucky roll".to_string());
+    }
+
+    if event_double_roll && let Some(event) = active_event.as_ref() {
+        boost_notes.push(format!("🌍 {}", event.name));
+    }
+
+    if viagra_active {
+        multiplier += 0.20;
+        boost_notes.push("💊 Viagra +20%".to_string());
+    }
+
+    if let Some(percent) = daily_boost_percent {
+        multiplier += percent as f64 / 100.0;
+        boost_notes.push(format!("⚡ Daily +{}%", percent));
+    }
+
+    if let Some(event) = active_event.as_ref()
+        && let Some(event_multiplier) = event.growth_multiplier()
+    {
+        multiplier += event_multiplier - 1.0;
+        boost_notes.push(format!("🌍 {} +{}%", event.name, event.bonus_value));
+    }
+
+    let mut growth = if multiplier > 1.0 {
+        let boosted = (base_growth as f64 * multiplier).round() as i64;
         info!(
-            "User {} has viagra active, boosting growth from {} to {}",
-            user_id, base_growth, boosted
+            "User {} growth boosted from {} to {} with multiplier {:.2}",
+            user_id, base_growth, boosted, multiplier
         );
         boosted
     } else {
         base_growth
     };
+
+    if let Some(event) = active_event.as_ref()
+        && let Some(jackpot) = event.jackpot_extra_cm()
+    {
+        growth += jackpot;
+        boost_notes.push(format!("🌍 {} +{} cm", event.name, jackpot));
+    }
 
     // Update the database - increment growth count too
     match sqlx::query!(
@@ -146,6 +218,15 @@ pub async fn handle_grow_command(
             return command.create_response(&ctx.http, builder).await;
         }
     };
+
+    update_growth_streak(bot, &user_id, &guild_id).await;
+
+    if let Some(event) = active_event.as_ref()
+        && let Some(pot_amount) = event.community_pot_cm_per_grow()
+    {
+        add_to_community_pot(bot, event.id, pot_amount).await;
+        boost_notes.push(format!("🌍 {} pot +{} cm", event.name, pot_amount));
+    }
 
     // Get new length
     let new_length = match sqlx::query!(
@@ -207,14 +288,18 @@ pub async fn handle_grow_command(
 
     // Calculate next grow time (cooldown)
     let last_grow = chrono::Utc::now();
-    let next_grow_unix = (last_grow + chrono::Duration::minutes(60)).timestamp();
+    let cooldown_minutes = active_event
+        .as_ref()
+        .and_then(|event| event.grow_cooldown_minutes())
+        .unwrap_or(60);
+    let next_grow_unix = (last_grow + chrono::Duration::minutes(cooldown_minutes)).timestamp();
     let next_grow_discord = format!("<t:{}:R>", next_grow_unix);
 
-    // Add viagra boost indicator
-    let viagra_text = if viagra_active {
-        " 💊 **(VIAGRA BOOST APPLIED!)**"
+    // Add boost indicators
+    let boost_text = if boost_notes.is_empty() {
+        String::new()
     } else {
-        ""
+        format!(" **({})**", boost_notes.join(", "))
     };
 
     // Create response with funny messages based on growth
@@ -224,7 +309,7 @@ pub async fn handle_grow_command(
             format!(
                 "Holy moly! Your dick just grew by **{} cm**{} and is now a whopping **{} cm** long!\nYou are currently **{}{}** in the server.\n\nNext attempt: {}\n\nCareful, you might trip over it soon!",
                 growth,
-                viagra_text,
+                boost_text,
                 new_length,
                 position,
                 ordinal_suffix(position),
@@ -238,7 +323,7 @@ pub async fn handle_grow_command(
             format!(
                 "Nice! Your dick grew by **{} cm**{}! Your new length is **{} cm**.\nYou are currently **{}{}** in the server's leaderboard.\n\nNext attempt: {}\n\nKeep up the good work, size king!",
                 growth,
-                viagra_text,
+                boost_text,
                 new_length,
                 position,
                 ordinal_suffix(position),
@@ -252,7 +337,7 @@ pub async fn handle_grow_command(
             format!(
                 "A good **{} cm** added{}! You're now at **{} cm**.\nYou are currently **{}{}** in the server.\n\nNext attempt: {}\n\nEvery centimeter counts!",
                 growth,
-                viagra_text,
+                boost_text,
                 new_length,
                 position,
                 ordinal_suffix(position),
@@ -266,7 +351,7 @@ pub async fn handle_grow_command(
             format!(
                 "A small but positive **{} cm** added{}. You're now at **{} cm**.\nYou are currently **{}{}** in the server.\n\nNext attempt: {}\n\nSmall steps lead to big achievements!",
                 growth,
-                viagra_text,
+                boost_text,
                 new_length,
                 position,
                 ordinal_suffix(position),
