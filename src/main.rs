@@ -416,10 +416,7 @@ async fn main() {
         .expect("Failed to ensure current database schema");
 
     // Initialize the bot
-    let intents = GatewayIntents::GUILDS
-        | GatewayIntents::GUILD_MESSAGES
-        | GatewayIntents::DIRECT_MESSAGES
-        | GatewayIntents::MESSAGE_CONTENT;
+    let intents = GatewayIntents::GUILDS;
     let bot_data = Arc::new(Bot {
         database,
         pvp_challenges: RwLock::new(HashMap::new()),
