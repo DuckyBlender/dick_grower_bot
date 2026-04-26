@@ -14,7 +14,7 @@ pub mod viagra;
 pub use crate::utils::escape_markdown;
 pub use daily::handle_daily_command;
 pub use dotd::handle_dotd_command;
-pub use events::handle_events_command;
+pub use events::{handle_event_command, tick_event_system};
 pub use gift::handle_gift_command;
 pub use global::handle_global_command;
 pub use grow::handle_grow_command;

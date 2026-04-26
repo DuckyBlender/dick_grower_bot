@@ -9,7 +9,7 @@ use serenity::all::{
 use serenity::prelude::*;
 use sqlx::Row;
 
-const EVENT_DURATION_HOURS: i64 = 4;
+pub const EVENT_DURATION_HOURS: i64 = 4;
 const EVENT_ACTIVATION_CHANCE_NUMERATOR: u32 = 1;
 const EVENT_ACTIVATION_CHANCE_DENOMINATOR: u32 = 2;
 
@@ -158,24 +158,12 @@ pub async fn get_active_global_event(bot: &Bot) -> Option<GlobalEvent> {
     })
 }
 
-pub async fn handle_events_command(
+pub async fn handle_event_command(
     ctx: &Context,
     command: &CommandInteraction,
 ) -> Result<(), serenity::Error> {
     let data = ctx.data.read().await;
     let bot = data.get::<Bot>().unwrap();
-
-    if let Some(message) = resolve_expired_community_pot(bot).await {
-        let builder = CreateInteractionResponse::Message(
-            CreateInteractionResponseMessage::new().add_embed(
-                CreateEmbed::new()
-                    .title("🌍 Community Pot Awarded!")
-                    .description(message)
-                    .color(0x2ECC71),
-            ),
-        );
-        return command.create_response(&ctx.http, builder).await;
-    }
 
     if let Some(event) = get_active_global_event(bot).await {
         let builder = CreateInteractionResponse::Message(
@@ -193,19 +181,14 @@ pub async fn handle_events_command(
                     )),
             ),
         );
-        return command.create_response(&ctx.http, builder).await;
-    }
-
-    if !rand::rng().random_ratio(
-        EVENT_ACTIVATION_CHANCE_NUMERATOR,
-        EVENT_ACTIVATION_CHANCE_DENOMINATOR,
-    ) {
+        command.create_response(&ctx.http, builder).await
+    } else {
         let builder = CreateInteractionResponse::Message(
             CreateInteractionResponseMessage::new().add_embed(
                 CreateEmbed::new()
                     .title("🌍 No Global Event")
                     .description(
-                        "Nothing special is happening globally right now. The next /events roll has a 50% chance to start one.",
+                        "Nothing special is happening globally right now. Events start automatically with a 50% chance every so often.",
                     )
                     .color(0xAAAAAA)
                     .footer(CreateEmbedFooter::new(
@@ -213,60 +196,11 @@ pub async fn handle_events_command(
                     )),
             ),
         );
-        return command.create_response(&ctx.http, builder).await;
+        command.create_response(&ctx.http, builder).await
     }
-
-    let event = roll_global_event();
-    let now = chrono::Utc::now().naive_utc();
-    let ends_at = now + Duration::hours(EVENT_DURATION_HOURS);
-    let now_str = now.format("%Y-%m-%d %H:%M:%S").to_string();
-    let ends_at_str = ends_at.format("%Y-%m-%d %H:%M:%S").to_string();
-
-    if let Err(why) = sqlx::query(
-        "INSERT INTO global_events (event_type, name, description, bonus_value, started_at, ends_at)
-         VALUES (?, ?, ?, ?, ?, ?)",
-    )
-    .bind(event.kind.as_str())
-    .bind(&event.name)
-    .bind(&event.description)
-    .bind(event.bonus_value)
-    .bind(now_str)
-    .bind(ends_at_str)
-    .execute(&bot.database)
-    .await
-    {
-        error!("Error creating global event: {:?}", why);
-        let builder = CreateInteractionResponse::Message(
-            CreateInteractionResponseMessage::new().add_embed(
-                CreateEmbed::new()
-                    .title("⚠️ Event Error")
-                    .description("Failed to start a global event. The universe refused to cooperate.")
-                    .color(0xFF0000),
-            ),
-        );
-        return command.create_response(&ctx.http, builder).await;
-    }
-
-    let event = GlobalEvent { ends_at, ..event };
-    let builder = CreateInteractionResponse::Message(
-        CreateInteractionResponseMessage::new().add_embed(
-            CreateEmbed::new()
-                .title(format!("🌍 Global Event Started: {}", event.name))
-                .description(format!(
-                    "{}\n\nEvent ends: {}",
-                    event.description,
-                    event.ends_discord_timestamp()
-                ))
-                .color(0xF1C40F)
-                .footer(CreateEmbedFooter::new(
-                    "Everyone, everywhere, gets this effect until it ends.",
-                )),
-        ),
-    );
-    command.create_response(&ctx.http, builder).await
 }
 
-fn roll_global_event() -> GlobalEvent {
+pub fn roll_global_event() -> GlobalEvent {
     let growth_bonus_cutoff = GROWTH_BONUS_EVENT_WEIGHT;
     let lower_cooldown_cutoff = growth_bonus_cutoff + LOWER_COOLDOWN_EVENT_WEIGHT;
     let longer_viagra_cutoff = lower_cooldown_cutoff + LONGER_VIAGRA_EVENT_WEIGHT;
@@ -351,7 +285,7 @@ fn roll_global_event() -> GlobalEvent {
             kind: EventKind::CommunityPot,
             name: "Community Pump".to_string(),
             description: format!(
-                "Every /grow adds **+{} cm** to a global pot. Use /events after it ends to award the pot to a random participant.",
+                "Every /grow adds **+{} cm** to a global pot. The pot is automatically awarded to a random participant after the event ends.",
                 COMMUNITY_POT_CM_PER_GROW
             ),
             bonus_value: COMMUNITY_POT_CM_PER_GROW,
@@ -375,7 +309,7 @@ pub async fn add_to_community_pot(bot: &Bot, event_id: i64, amount: i64) {
     }
 }
 
-async fn resolve_expired_community_pot(bot: &Bot) -> Option<String> {
+pub async fn resolve_expired_community_pot(bot: &Bot) -> Option<String> {
     let event = sqlx::query(
         "SELECT id, name, pot_amount, started_at, ends_at
          FROM global_events
@@ -489,4 +423,61 @@ async fn mark_community_pot_resolved(bot: &Bot, event_id: i64, resolved_at: &str
     {
         error!("Error resolving empty community pot: {:?}", why);
     }
+}
+
+pub async fn try_start_new_event(bot: &Bot) -> Option<GlobalEvent> {
+    if get_active_global_event(bot).await.is_some() {
+        return None;
+    }
+
+    if !rand::rng().random_ratio(
+        EVENT_ACTIVATION_CHANCE_NUMERATOR,
+        EVENT_ACTIVATION_CHANCE_DENOMINATOR,
+    ) {
+        return None;
+    }
+
+    let event = roll_global_event();
+    let now = chrono::Utc::now().naive_utc();
+    let ends_at = now + Duration::hours(EVENT_DURATION_HOURS);
+    let now_str = now.format("%Y-%m-%d %H:%M:%S").to_string();
+    let ends_at_str = ends_at.format("%Y-%m-%d %H:%M:%S").to_string();
+
+    if let Err(why) = sqlx::query(
+        "INSERT INTO global_events (event_type, name, description, bonus_value, started_at, ends_at)
+         VALUES (?, ?, ?, ?, ?, ?)",
+    )
+    .bind(event.kind.as_str())
+    .bind(&event.name)
+    .bind(&event.description)
+    .bind(event.bonus_value)
+    .bind(now_str)
+    .bind(ends_at_str)
+    .execute(&bot.database)
+    .await
+    {
+        error!("Error creating global event: {:?}", why);
+        return None;
+    }
+
+    Some(GlobalEvent { ends_at, ..event })
+}
+
+pub async fn tick_event_system(bot: &Bot) -> Vec<String> {
+    let mut messages = Vec::new();
+
+    if let Some(msg) = resolve_expired_community_pot(bot).await {
+        messages.push(msg);
+    }
+
+    if let Some(event) = try_start_new_event(bot).await {
+        messages.push(format!(
+            "🌍 Global Event Started: {} — {} (ends {})",
+            event.name,
+            event.description,
+            event.ends_discord_timestamp()
+        ));
+    }
+
+    messages
 }
