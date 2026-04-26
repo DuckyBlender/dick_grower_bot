@@ -6,7 +6,7 @@ use crate::commands::daily::{
 use crate::commands::events::{add_to_community_pot, get_active_global_event};
 use crate::commands::viagra::is_viagra_active;
 use crate::time::check_cooldown_with_minutes;
-use crate::utils::ordinal_suffix;
+use crate::utils::{ordinal_suffix, pluralize};
 use chrono::NaiveDateTime;
 use log::{error, info};
 use rand::RngExt;
@@ -18,6 +18,32 @@ use serenity::prelude::*;
 
 const BASE_GROWTH_MIN_CM: i64 = 1;
 const BASE_GROWTH_MAX_CM: i64 = 10;
+
+async fn apply_streak_reward(bot: &Bot, user_id: &str, guild_id: &str, streak: i64) -> Option<i64> {
+    let reward = (streak * 2).clamp(2, 30);
+    let now_str = chrono::Utc::now()
+        .naive_utc()
+        .format("%Y-%m-%d %H:%M:%S")
+        .to_string();
+
+    if let Err(why) = sqlx::query(
+        "UPDATE dicks
+         SET length = length + ?, streak_last_claimed = ?
+         WHERE user_id = ? AND guild_id = ?",
+    )
+    .bind(reward)
+    .bind(now_str)
+    .bind(user_id)
+    .bind(guild_id)
+    .execute(&bot.database)
+    .await
+    {
+        error!("Error applying automatic streak reward: {:?}", why);
+        return None;
+    }
+
+    Some(reward)
+}
 
 pub async fn handle_grow_command(
     ctx: &Context,
@@ -219,8 +245,6 @@ pub async fn handle_grow_command(
         }
     };
 
-    update_growth_streak(bot, &user_id, &guild_id).await;
-
     if let Some(event) = active_event.as_ref()
         && let Some(pot_amount) = event.community_pot_cm_per_grow()
     {
@@ -267,6 +291,39 @@ pub async fn handle_grow_command(
     .await
     {
         error!("Error logging growth history: {:?}", why);
+    }
+
+    let mut new_length = new_length;
+    if let Some(streak_update) = update_growth_streak(bot, &user_id, &guild_id).await {
+        if streak_update.used_streak_saver {
+            boost_notes.push("🛟 Streak saver".to_string());
+        }
+
+        if let Some(streak_reward) =
+            apply_streak_reward(bot, &user_id, &guild_id, streak_update.streak).await
+        {
+            boost_notes.push(format!(
+                "🔥 {} streak +{} cm",
+                pluralize(streak_update.streak, "day", "days"),
+                streak_reward
+            ));
+
+            new_length += streak_reward;
+
+            if let Err(why) = sqlx::query!(
+                "INSERT INTO length_history (user_id, guild_id, length, growth_amount, growth_type)
+                 VALUES (?, ?, ?, ?, 'streak')",
+                user_id,
+                guild_id,
+                new_length,
+                streak_reward
+            )
+            .execute(&bot.database)
+            .await
+            {
+                error!("Error logging automatic streak reward: {:?}", why);
+            }
+        }
     }
 
     // Get user position in server top

@@ -244,7 +244,16 @@ pub async fn consume_lucky_roll(bot: &Bot, user_id: &str, guild_id: &str) -> boo
     consume_daily_counter(bot, user_id, guild_id, "daily_lucky_rolls").await
 }
 
-pub async fn update_growth_streak(bot: &Bot, user_id: &str, guild_id: &str) {
+pub struct GrowthStreakUpdate {
+    pub streak: i64,
+    pub used_streak_saver: bool,
+}
+
+pub async fn update_growth_streak(
+    bot: &Bot,
+    user_id: &str,
+    guild_id: &str,
+) -> Option<GrowthStreakUpdate> {
     let row = match sqlx::query(
         "SELECT daily_streak, last_streak_date, daily_streak_savers
          FROM dicks
@@ -258,13 +267,11 @@ pub async fn update_growth_streak(bot: &Bot, user_id: &str, guild_id: &str) {
         Ok(row) => row,
         Err(why) => {
             error!("Error fetching growth streak: {:?}", why);
-            return;
+            return None;
         }
     };
 
-    let Some(row) = row else {
-        return;
-    };
+    let row = row?;
 
     let today = chrono::Utc::now().date_naive();
     let current_streak = row.try_get::<i64, _>("daily_streak").unwrap_or_default();
@@ -275,18 +282,20 @@ pub async fn update_growth_streak(bot: &Bot, user_id: &str, guild_id: &str) {
         .and_then(|date| chrono::NaiveDate::parse_from_str(&date, "%Y-%m-%d").ok());
 
     if last_date == Some(today) {
-        return;
+        return None;
     }
 
     let streak_savers = row
         .try_get::<i64, _>("daily_streak_savers")
         .unwrap_or_default();
+    let mut used_streak_saver = false;
     let new_streak = if last_date == Some(today - Duration::days(1)) {
         current_streak + 1
     } else if last_date == Some(today - Duration::days(2))
         && current_streak > 0
         && streak_savers > 0
     {
+        used_streak_saver = true;
         if let Err(why) =
             decrement_daily_counter(bot, user_id, guild_id, "daily_streak_savers").await
         {
@@ -315,7 +324,13 @@ pub async fn update_growth_streak(bot: &Bot, user_id: &str, guild_id: &str) {
     .await
     {
         error!("Error updating growth streak: {:?}", why);
+        return None;
     }
+
+    Some(GrowthStreakUpdate {
+        streak: new_streak,
+        used_streak_saver,
+    })
 }
 
 async fn ensure_user(bot: &Bot, user_id: &str, guild_id: &str, user_name: &str) {
