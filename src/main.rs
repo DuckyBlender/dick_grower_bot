@@ -1,3 +1,4 @@
+use chrono::Timelike;
 use commands::*;
 use fern::colors::{Color, ColoredLevelConfig};
 use log::{LevelFilter, error, info};
@@ -244,7 +245,7 @@ impl EventHandler for Handler {
                     "gift" => handle_gift_command(&ctx, &command).await,
                     "viagra" => handle_viagra_command(&ctx, &command).await,
                     "daily" => handle_daily_command(&ctx, &command).await,
-                    "events" => handle_events_command(&ctx, &command).await,
+                    "event" => handle_event_command(&ctx, &command).await,
                     _ => {
                         // For unimplemented commands, respond directly here
                         command
@@ -314,6 +315,31 @@ impl EventHandler for Handler {
             }
         });
 
+        // Start a task to automatically rotate global events every 4 hours on UTC boundaries
+        let ctx_clone = ctx.clone();
+        tokio::spawn(async move {
+            let now = chrono::Utc::now();
+            let seconds_into_period =
+                (now.hour() % 4) as u64 * 3600 + now.minute() as u64 * 60 + now.second() as u64;
+            let seconds_until_next = 4 * 3600 - seconds_into_period;
+
+            tokio::time::sleep(StdDuration::from_secs(seconds_until_next)).await;
+            let mut interval = tokio::time::interval(StdDuration::from_secs(4 * 3600));
+
+            loop {
+                interval.tick().await;
+
+                let data = ctx_clone.data.read().await;
+                let bot = data.get::<Bot>().unwrap().clone();
+                drop(data);
+
+                let messages = tick_event_system(&bot).await;
+                for msg in messages {
+                    info!("Event system: {}", msg);
+                }
+            }
+        });
+
         // Register commands globally
         let commands = vec![
             CreateCommand::new("grow").description("Grow your cucumber"),
@@ -366,8 +392,8 @@ impl EventHandler for Handler {
             CreateCommand::new("viagra")
                 .description("Boost your growth by 20% for 6 hours (20 hour cooldown)"),
             CreateCommand::new("daily").description("Claim a once-a-day random perk"),
-            CreateCommand::new("events")
-                .description("Start or view the current global growth event"),
+            CreateCommand::new("event")
+                .description("View the current global growth event"),
         ];
 
         if let Err(why) = ctx.http.create_global_commands(&commands).await {
