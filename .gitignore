@@ -7,3 +7,5 @@
 *.html
 *.csv
 *.DS_Store
+# CocoIndex Code (ccc)
+/.cocoindex_code/
