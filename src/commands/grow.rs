@@ -20,7 +20,8 @@ const BASE_GROWTH_MIN_CM: i64 = 1;
 const BASE_GROWTH_MAX_CM: i64 = 10;
 
 async fn apply_streak_reward(bot: &Bot, user_id: &str, guild_id: &str, streak: i64) -> Option<i64> {
-    let reward = (streak * 2).clamp(2, 30);
+    let reward = (1.0 + (streak as f64).ln() * 0.8).round() as i64;
+    let reward = reward.clamp(1, 5);
     let now_str = chrono::Utc::now()
         .naive_utc()
         .format("%Y-%m-%d %H:%M:%S")
@@ -435,6 +436,24 @@ pub async fn handle_grow_command(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_streak_reward_curve() {
+        let cases = [
+            (1, 1),
+            (3, 2),
+            (7, 3),
+            (14, 3),
+            (30, 4),
+            (60, 4),
+            (100, 5),
+        ];
+        for (streak, expected) in cases {
+            let reward = (1.0 + (streak as f64).ln() * 0.8).round() as i64;
+            let reward = reward.clamp(1, 5);
+            assert_eq!(reward, expected, "streak {} expected {} got {}", streak, expected, reward);
+        }
+    }
 
     #[test]
     fn test_growth_distribution() {
