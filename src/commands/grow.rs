@@ -419,15 +419,37 @@ pub async fn handle_grow_command(
         )
     };
 
+    const FOOTERS: &[&str] = &[
+        "Remember: it's not about the size, it's about... actually, it is about the size.",
+        "Your ruler is judging you.",
+        "Even tiny steps are still forward progress.",
+        "The pen is mighty, but the dick is mightier.",
+        "Grow slow, go low, stay low.",
+        "Nature abhors a vacuum, but loves a full one.",
+        "A journey of a thousand miles begins with a single /grow.",
+        "With great length comes great responsibility.",
+        "You're doing great! (literally)",
+        "If you can measure it, you can improve it.",
+        "The early bird gets the worm. The big dick gets respect.",
+        "Rome wasn't built in a day, and neither was your dick.",
+        "Stay hungry, stay humble, stay growing.",
+        "What goes up must come down... eventually.",
+        "In a time of uncertainty, /grow.",
+        "Trust the process. Trust the gains.",
+        "Big things come to those who wait... and /grow daily.",
+        "The only bad measurement is no measurement.",
+        "Keep it between the sheets and in the database.",
+        "Your dick is a garden. Water it daily.",
+    ];
+    let footer = FOOTERS[rand::rng().random_range(0..FOOTERS.len())];
+
     let builder = CreateInteractionResponse::Message(
         CreateInteractionResponseMessage::new().add_embed(
             CreateEmbed::new()
                 .title(title)
                 .description(description)
                 .color(color)
-                .footer(CreateEmbedFooter::new(
-                    "Remember: it's not about the size, it's about... actually, it is about the size.",
-                )),
+                .footer(CreateEmbedFooter::new(footer)),
         ),
     );
     return command.create_response(&ctx.http, builder).await;
