@@ -425,10 +425,10 @@ pub async fn handle_grow_command(
         "Even tiny steps are still forward progress.",
         "The pen is mighty, but the dick is mightier.",
         "Grow slow, go low, stay low.",
-        "Nature abhors a vacuum, but loves a full one.",
+        "Nature hates a vacuum, but loves a full one.",
         "A journey of a thousand miles begins with a single /grow.",
         "With great length comes great responsibility.",
-        "You're doing great! (literally)",
+        "You're doing great!"
         "If you can measure it, you can improve it.",
         "The early bird gets the worm. The big dick gets respect.",
         "Rome wasn't built in a day, and neither was your dick.",
