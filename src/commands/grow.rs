@@ -428,7 +428,7 @@ pub async fn handle_grow_command(
         "Nature hates a vacuum, but loves a full one.",
         "A journey of a thousand miles begins with a single /grow.",
         "With great length comes great responsibility.",
-        "You're doing great!"
+        "You're doing great!",
         "If you can measure it, you can improve it.",
         "The early bird gets the worm. The big dick gets respect.",
         "Rome wasn't built in a day, and neither was your dick.",
