@@ -1,4 +1,5 @@
 use crate::Bot;
+use crate::commands::seasons::{active_season, credit_earned_growth};
 use crate::time::check_utc_day_reset;
 use chrono::{Duration, NaiveDateTime};
 use log::{error, info};
@@ -93,25 +94,77 @@ pub async fn handle_daily_command(
     let reward = rand::rng().random_range(0..total_daily_reward_weight);
     let (title, description, color) = if reward < DAILY_BONUS_REWARD_WEIGHT {
         let bonus = rand::rng().random_range(DAILY_BONUS_CM_MIN..=DAILY_BONUS_CM_MAX);
-        if let Err(why) = sqlx::query(
-            "UPDATE dicks
+        let season = match active_season(&bot.database).await {
+            Ok(season) => season,
+            Err(why) => {
+                error!("Error selecting season for daily bonus: {:?}", why);
+                return command
+                    .create_response(
+                        &ctx.http,
+                        CreateInteractionResponse::Message(
+                            CreateInteractionResponseMessage::new()
+                                .content("Daily rewards are unavailable during season rollover.")
+                                .ephemeral(true),
+                        ),
+                    )
+                    .await;
+            }
+        };
+        let mut tx = match bot.database.begin().await {
+            Ok(tx) => tx,
+            Err(why) => {
+                error!("Error starting daily transaction: {:?}", why);
+                return Ok(());
+            }
+        };
+        let applied = async {
+            sqlx::query(
+                "UPDATE dicks
                  SET daily_last_claimed = ?, length = length + ?
                  WHERE user_id = ? AND guild_id = ?",
-        )
-        .bind(&now_str)
-        .bind(bonus)
-        .bind(&user_id)
-        .bind(&guild_id)
-        .execute(&bot.database)
-        .await
-        {
-            error!("Error applying daily cm bonus: {:?}", why);
+            )
+            .bind(&now_str)
+            .bind(bonus)
+            .bind(&user_id)
+            .bind(&guild_id)
+            .execute(&mut *tx)
+            .await?;
+            credit_earned_growth(&mut tx, season.id, &user_id, &guild_id, bonus).await?;
+            let new_length = sqlx::query_scalar::<_, i64>(
+                "SELECT length FROM dicks WHERE user_id = ? AND guild_id = ?",
+            )
+            .bind(&user_id)
+            .bind(&guild_id)
+            .fetch_one(&mut *tx)
+            .await?;
+            sqlx::query(
+                "INSERT INTO length_history
+                    (user_id, guild_id, length, growth_amount, growth_type)
+                 VALUES (?, ?, ?, ?, 'daily_bonus')",
+            )
+            .bind(&user_id)
+            .bind(&guild_id)
+            .bind(new_length)
+            .bind(bonus)
+            .execute(&mut *tx)
+            .await?;
+            Ok::<i64, sqlx::Error>(new_length)
         }
-
-        let new_length = fetch_length(bot, &user_id, &guild_id)
-            .await
-            .unwrap_or_default();
-        log_length_history(bot, &user_id, &guild_id, new_length, bonus, "daily_bonus").await;
+        .await;
+        let new_length = match applied {
+            Ok(new_length) => {
+                if let Err(why) = tx.commit().await {
+                    error!("Error committing daily bonus: {:?}", why);
+                    return Ok(());
+                }
+                new_length
+            }
+            Err(why) => {
+                error!("Error applying daily cm bonus: {:?}", why);
+                let _ = tx.rollback().await;
+                return Ok(());
+            }
+        };
 
         (
             "🎁 Daily Bonus Claimed!",
@@ -361,41 +414,6 @@ async fn ensure_user(bot: &Bot, user_id: &str, guild_id: &str, user_name: &str) 
     .await
     {
         error!("Error creating user for daily: {:?}", why);
-    }
-}
-
-async fn fetch_length(bot: &Bot, user_id: &str, guild_id: &str) -> Option<i64> {
-    let row = sqlx::query("SELECT length FROM dicks WHERE user_id = ? AND guild_id = ?")
-        .bind(user_id)
-        .bind(guild_id)
-        .fetch_optional(&bot.database)
-        .await
-        .ok()??;
-
-    row.try_get("length").ok()
-}
-
-async fn log_length_history(
-    bot: &Bot,
-    user_id: &str,
-    guild_id: &str,
-    length: i64,
-    growth_amount: i64,
-    growth_type: &str,
-) {
-    if let Err(why) = sqlx::query(
-        "INSERT INTO length_history (user_id, guild_id, length, growth_amount, growth_type)
-         VALUES (?, ?, ?, ?, ?)",
-    )
-    .bind(user_id)
-    .bind(guild_id)
-    .bind(length)
-    .bind(growth_amount)
-    .bind(growth_type)
-    .execute(&bot.database)
-    .await
-    {
-        error!("Error logging daily history: {:?}", why);
     }
 }
 

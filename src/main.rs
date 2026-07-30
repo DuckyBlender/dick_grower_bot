@@ -32,19 +32,9 @@ impl TypeMapKey for Bot {
     type Value = Arc<Bot>;
 }
 
-// Guild name cache duration in seconds
-const GUILD_NAME_CACHE_DURATION: u64 = 60 * 60 * 12; // 12 hours
-
-#[derive(Clone)]
-pub struct GuildNameCache {
-    pub name: String,
-    pub cached_at: u64,
-}
-
 pub struct Bot {
     pub database: Pool<Sqlite>,
     pub pvp_challenges: RwLock<HashMap<String, PvpChallenge>>,
-    pub guild_name_cache: RwLock<HashMap<u64, GuildNameCache>>,
 }
 
 async fn table_exists(database: &Pool<Sqlite>, table_name: &str) -> Result<bool, sqlx::Error> {
@@ -76,13 +66,14 @@ async fn add_column_if_missing(
     table_name: &str,
     column_name: &str,
     column_definition: &str,
-) -> Result<(), sqlx::Error> {
+) -> Result<bool, sqlx::Error> {
     if !column_exists(database, table_name, column_name).await? {
         let query = format!("ALTER TABLE {table_name} ADD COLUMN {column_definition}");
         sqlx::query(&query).execute(database).await?;
+        return Ok(true);
     }
 
-    Ok(())
+    Ok(false)
 }
 
 async fn ensure_current_schema(database: &Pool<Sqlite>) -> Result<(), sqlx::Error> {
@@ -150,6 +141,35 @@ async fn ensure_current_schema(database: &Pool<Sqlite>) -> Result<(), sqlx::Erro
             "streak_last_claimed TEXT DEFAULT NULL",
         )
         .await?;
+        add_column_if_missing(
+            database,
+            "dicks",
+            "prestige_level",
+            "prestige_level INTEGER NOT NULL DEFAULT 0",
+        )
+        .await?;
+        add_column_if_missing(
+            database,
+            "dicks",
+            "prestige_points",
+            "prestige_points INTEGER NOT NULL DEFAULT 0",
+        )
+        .await?;
+        let added_prestige_progress = add_column_if_missing(
+            database,
+            "dicks",
+            "prestige_progress",
+            "prestige_progress INTEGER NOT NULL DEFAULT 0",
+        )
+        .await?;
+        if added_prestige_progress {
+            sqlx::query(
+                "UPDATE dicks
+                 SET prestige_progress = CASE WHEN length > 0 THEN length ELSE 0 END",
+            )
+            .execute(database)
+            .await?;
+        }
     }
 
     sqlx::query(
@@ -186,6 +206,74 @@ async fn ensure_current_schema(database: &Pool<Sqlite>) -> Result<(), sqlx::Erro
     sqlx::query("CREATE INDEX IF NOT EXISTS idx_global_events_ends_at ON global_events(ends_at)")
         .execute(database)
         .await?;
+
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS seasons (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            season_number INTEGER NOT NULL UNIQUE,
+            name TEXT NOT NULL,
+            starts_at TEXT NOT NULL,
+            ends_at TEXT NOT NULL,
+            finalized_at TEXT DEFAULT NULL
+        )",
+    )
+    .execute(database)
+    .await?;
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS season_scores (
+            season_id INTEGER NOT NULL,
+            user_id TEXT NOT NULL,
+            guild_id TEXT NOT NULL,
+            score INTEGER NOT NULL DEFAULT 0,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (season_id, user_id, guild_id),
+            FOREIGN KEY (season_id) REFERENCES seasons(id)
+        )",
+    )
+    .execute(database)
+    .await?;
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS season_placements (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            season_id INTEGER NOT NULL,
+            scope TEXT NOT NULL CHECK (scope IN ('server', 'global')),
+            guild_id TEXT NOT NULL DEFAULT '',
+            profile_guild_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            position INTEGER NOT NULL CHECK (position BETWEEN 1 AND 3),
+            score INTEGER NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE (season_id, scope, guild_id, position),
+            FOREIGN KEY (season_id) REFERENCES seasons(id)
+        )",
+    )
+    .execute(database)
+    .await?;
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS prestige_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            guild_id TEXT NOT NULL,
+            prestige_level INTEGER NOT NULL,
+            points_earned INTEGER NOT NULL,
+            length_before_reset INTEGER NOT NULL,
+            progress_before_reset INTEGER NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )",
+    )
+    .execute(database)
+    .await?;
+
+    for index in [
+        "CREATE INDEX IF NOT EXISTS idx_dicks_global_leaderboard ON dicks(length DESC, user_id ASC, guild_id ASC)",
+        "CREATE INDEX IF NOT EXISTS idx_dicks_guild_leaderboard ON dicks(guild_id, length DESC, user_id ASC)",
+        "CREATE INDEX IF NOT EXISTS idx_season_scores_global ON season_scores(season_id, score DESC, user_id ASC, guild_id ASC)",
+        "CREATE INDEX IF NOT EXISTS idx_season_scores_guild ON season_scores(season_id, guild_id, score DESC, user_id ASC)",
+        "CREATE INDEX IF NOT EXISTS idx_season_placements_profile ON season_placements(user_id, profile_guild_id, season_id DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_prestige_history_profile ON prestige_history(user_id, guild_id, created_at DESC)",
+    ] {
+        sqlx::query(index).execute(database).await?;
+    }
 
     Ok(())
 }
@@ -238,6 +326,8 @@ impl EventHandler for Handler {
                     "grow" => handle_grow_command(&ctx, &command).await,
                     "top" => handle_top_command(&ctx, &command).await,
                     "global" => handle_global_command(&ctx, &command).await,
+                    "season" => handle_season_command(&ctx, &command).await,
+                    "prestige" => handle_prestige_command(&ctx, &command).await,
                     "pvp" => handle_pvp_command(&ctx, &command).await,
                     "stats" => handle_stats_command(&ctx, &command).await,
                     "dickoftheday" => handle_dotd_command(&ctx, &command).await,
@@ -294,6 +384,18 @@ impl EventHandler for Handler {
                     }
                 }
             }
+            Interaction::Component(component)
+                if component.data.custom_id.starts_with("prestige_confirm:")
+                    || component.data.custom_id.starts_with("prestige_cancel:") =>
+            {
+                info!(
+                    "Prestige component interaction: {}",
+                    component.data.custom_id
+                );
+                if let Err(why) = handle_prestige_component(&ctx, &component).await {
+                    error!("Error handling prestige component: {}", why);
+                }
+            }
             _ => {}
         }
     }
@@ -312,6 +414,33 @@ impl EventHandler for Handler {
 
                 // Update presence
                 update_presence(&ctx_clone).await;
+            }
+        });
+
+        // Finalize ended seasons and create the next one at its UTC boundary.
+        let ctx_clone = ctx.clone();
+        tokio::spawn(async move {
+            loop {
+                let bot = {
+                    let data = ctx_clone.data.read().await;
+                    data.get::<Bot>().cloned()
+                };
+                let Some(bot) = bot else {
+                    tokio::time::sleep(StdDuration::from_secs(60)).await;
+                    continue;
+                };
+                match ensure_active_season(&bot.database, chrono::Utc::now().naive_utc()).await {
+                    Ok(season) => {
+                        let seconds = (season.ends_at - chrono::Utc::now().naive_utc())
+                            .num_seconds()
+                            .max(1) as u64;
+                        tokio::time::sleep(StdDuration::from_secs(seconds)).await;
+                    }
+                    Err(why) => {
+                        error!("Season rollover failed: {:?}", why);
+                        tokio::time::sleep(StdDuration::from_secs(60)).await;
+                    }
+                }
             }
         });
 
@@ -347,6 +476,30 @@ impl EventHandler for Handler {
                 .description("Show the top players with the biggest weapons in this server"),
             CreateCommand::new("global")
                 .description("Show the top players with the biggest weapons across all servers"),
+            CreateCommand::new("season")
+                .description("View the current or previous seasonal leaderboard")
+                .add_option(
+                    CreateCommandOption::new(
+                        CommandOptionType::String,
+                        "scope",
+                        "Choose the server or global season leaderboard",
+                    )
+                    .required(false)
+                    .add_string_choice("Server", "server")
+                    .add_string_choice("Global", "global"),
+                )
+                .add_option(
+                    CreateCommandOption::new(
+                        CommandOptionType::String,
+                        "period",
+                        "Choose the current or previous season",
+                    )
+                    .required(false)
+                    .add_string_choice("Current", "current")
+                    .add_string_choice("Previous", "previous"),
+                ),
+            CreateCommand::new("prestige")
+                .description("Reset earned progress for a permanent /grow bonus"),
             CreateCommand::new("pvp")
                 .description("Start a dick battle")
                 .add_option(
@@ -392,8 +545,7 @@ impl EventHandler for Handler {
             CreateCommand::new("viagra")
                 .description("Boost your growth by 20% for 6 hours (20 hour cooldown)"),
             CreateCommand::new("daily").description("Claim a once-a-day random perk"),
-            CreateCommand::new("event")
-                .description("View the current global growth event"),
+            CreateCommand::new("event").description("View the current global growth event"),
         ];
 
         if let Err(why) = ctx.http.create_global_commands(&commands).await {
@@ -440,13 +592,15 @@ async fn main() {
     ensure_current_schema(&database)
         .await
         .expect("Failed to ensure current database schema");
+    ensure_active_season(&database, chrono::Utc::now().naive_utc())
+        .await
+        .expect("Failed to initialize the active season");
 
     // Initialize the bot
     let intents = GatewayIntents::GUILDS;
     let bot_data = Arc::new(Bot {
         database,
         pvp_challenges: RwLock::new(HashMap::new()),
-        guild_name_cache: RwLock::new(HashMap::new()),
     });
 
     let mut client = Client::builder(token, intents)
@@ -462,5 +616,57 @@ async fn main() {
     // Start the bot
     if let Err(why) = client.start().await {
         error!("An error occurred while running the client: {:?}", why);
+    }
+}
+
+#[cfg(test)]
+mod schema_tests {
+    use super::*;
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    #[tokio::test]
+    async fn prestige_progress_backfills_once_from_existing_length() {
+        let database = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query(
+            "CREATE TABLE dicks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL, guild_id TEXT NOT NULL,
+                length INTEGER NOT NULL DEFAULT 0,
+                UNIQUE(user_id, guild_id)
+            )",
+        )
+        .execute(&database)
+        .await
+        .unwrap();
+        sqlx::query("INSERT INTO dicks (user_id, guild_id, length) VALUES ('u1', 'g1', 700)")
+            .execute(&database)
+            .await
+            .unwrap();
+
+        ensure_current_schema(&database).await.unwrap();
+        let backfilled = sqlx::query_scalar::<_, i64>(
+            "SELECT prestige_progress FROM dicks WHERE user_id = 'u1'",
+        )
+        .fetch_one(&database)
+        .await
+        .unwrap();
+        assert_eq!(backfilled, 700);
+
+        sqlx::query("UPDATE dicks SET prestige_progress = 12 WHERE user_id = 'u1'")
+            .execute(&database)
+            .await
+            .unwrap();
+        ensure_current_schema(&database).await.unwrap();
+        let unchanged = sqlx::query_scalar::<_, i64>(
+            "SELECT prestige_progress FROM dicks WHERE user_id = 'u1'",
+        )
+        .fetch_one(&database)
+        .await
+        .unwrap();
+        assert_eq!(unchanged, 12);
     }
 }

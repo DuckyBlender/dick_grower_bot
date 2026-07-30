@@ -1,6 +1,8 @@
 use crate::Bot;
 use crate::commands::escape_markdown;
 use crate::commands::events::get_active_global_event;
+use crate::commands::prestige::{prestige_growth_bonus_percent, required_length_for_level};
+use crate::commands::seasons::{active_season, get_profile_season_stats, recent_medals};
 use crate::commands::viagra::get_viagra_status;
 use crate::time::check_cooldown_with_minutes;
 use crate::utils::{get_fun_title_by_rank, ordinal_suffix, pluralize};
@@ -25,6 +27,9 @@ struct UserStats {
     cm_lost: i64,
     daily_streak: i64,
     best_daily_streak: i64,
+    prestige_level: i64,
+    prestige_points: i64,
+    prestige_progress: i64,
 }
 
 pub async fn handle_stats_command(
@@ -60,7 +65,8 @@ pub async fn handle_stats_command(
     let user_stats = match sqlx::query(
         "SELECT length, dick_of_day_count, last_grow, 
                 pvp_wins, pvp_losses, pvp_max_streak, pvp_current_streak,
-                cm_won, cm_lost, daily_streak, best_daily_streak
+                cm_won, cm_lost, daily_streak, best_daily_streak,
+                prestige_level, prestige_points, prestige_progress
          FROM dicks 
          WHERE user_id = ? AND guild_id = ?",
     )
@@ -81,6 +87,9 @@ pub async fn handle_stats_command(
             cm_lost: row.try_get("cm_lost").unwrap_or_default(),
             daily_streak: row.try_get("daily_streak").unwrap_or_default(),
             best_daily_streak: row.try_get("best_daily_streak").unwrap_or_default(),
+            prestige_level: row.try_get("prestige_level").unwrap_or_default(),
+            prestige_points: row.try_get("prestige_points").unwrap_or_default(),
+            prestige_progress: row.try_get("prestige_progress").unwrap_or_default(),
         },
         Ok(None) => {
             let msg = if is_self {
@@ -178,6 +187,32 @@ pub async fn handle_stats_command(
         "💊 Available now".to_string()
     };
 
+    let season_stats = match active_season(&bot.database).await {
+        Ok(season) => {
+            get_profile_season_stats(&bot.database, season.id, &user_id, &guild_id, false)
+                .await
+                .ok()
+                .flatten()
+        }
+        Err(why) => {
+            error!("Error fetching active season for stats: {:?}", why);
+            None
+        }
+    };
+    let season_text = season_stats
+        .map(|stats| format!("**{} cm** • Rank **#{}**", stats.score, stats.rank))
+        .unwrap_or_else(|| "**Unranked**".to_string());
+    let medals = recent_medals(&bot.database, &user_id, &guild_id)
+        .await
+        .unwrap_or_default();
+    let medals_text = if medals.is_empty() {
+        "None yet".to_string()
+    } else {
+        medals.join("\n")
+    };
+    let prestige_requirement = required_length_for_level(user_stats.prestige_level);
+    let prestige_bonus = prestige_growth_bonus_percent(user_stats.prestige_points);
+
     // Calculate win rate
     let total_fights = user_stats.pvp_wins + user_stats.pvp_losses;
     let win_rate = if total_fights > 0 {
@@ -251,6 +286,20 @@ pub async fn handle_stats_command(
                     )
                     .field("Growth Status", growth_status, false)
                     .field("Viagra Status", viagra_status, true)
+                    .field(
+                        "Prestige",
+                        format!(
+                            "Level **{}** • **{} PP** • **+{}%** `/grow`\nEarned progress: **{} / {} cm**",
+                            user_stats.prestige_level,
+                            user_stats.prestige_points,
+                            prestige_bonus,
+                            user_stats.prestige_progress,
+                            prestige_requirement
+                        ),
+                        false,
+                    )
+                    .field("Current Season", season_text, true)
+                    .field("Recent Medals", medals_text, true)
                     .field(
                         "Battle Stats",
                         format!(

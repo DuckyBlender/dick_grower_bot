@@ -1,4 +1,5 @@
 use crate::Bot;
+use crate::commands::seasons::{active_season, credit_earned_growth};
 use crate::time::check_utc_day_reset;
 use crate::utils::{get_fun_title_by_rank, ordinal_suffix};
 use chrono::NaiveDateTime;
@@ -149,62 +150,68 @@ pub async fn handle_dotd_command(
     // Award bonus
     let bonus = rand::rng().random_range(10..=25);
 
-    // Update DB
-    match sqlx::query!(
-        "UPDATE dicks SET length = length + ?, dick_of_day_count = dick_of_day_count + 1
-         WHERE user_id = ? AND guild_id = ?",
-        bonus,
-        winner.user_id,
-        guild_id
-    )
-    .execute(&bot.database)
-    .await
-    {
-        Ok(_) => (),
+    let season = match active_season(&bot.database).await {
+        Ok(season) => season,
         Err(why) => {
-            error!("Error updating winner: {:?}", why);
-            let builder = CreateInteractionResponse::Message(
-                CreateInteractionResponseMessage::new().add_embed(
-                    CreateEmbed::new()
-                        .title("⚠️ Database Error")
-                        .description("Failed to update the winner's length.")
-                        .color(0xFF0000),
-                ),
-            );
-            return command.create_response(&ctx.http, builder).await;
+            error!("Error selecting season for DOTD: {:?}", why);
+            return Ok(());
         }
     };
-
-    // Log the DOTD bonus in length_history
-    let winner_total_length = winner.length + bonus;
-    if let Err(why) = sqlx::query!(
-        "INSERT INTO length_history (user_id, guild_id, length, growth_amount, growth_type)
-         VALUES (?, ?, ?, ?, 'dotd')",
-        winner.user_id,
-        guild_id,
-        winner_total_length,
-        bonus
-    )
-    .execute(&bot.database)
-    .await
-    {
-        error!("Error logging DOTD history: {:?}", why);
+    let mut tx = match bot.database.begin().await {
+        Ok(tx) => tx,
+        Err(why) => {
+            error!("Error starting DOTD transaction: {:?}", why);
+            return Ok(());
+        }
+    };
+    let awarded = async {
+        sqlx::query(
+            "UPDATE dicks
+             SET length = length + ?, dick_of_day_count = dick_of_day_count + 1
+             WHERE user_id = ? AND guild_id = ?",
+        )
+        .bind(bonus)
+        .bind(&winner.user_id)
+        .bind(&guild_id)
+        .execute(&mut *tx)
+        .await?;
+        credit_earned_growth(&mut tx, season.id, &winner.user_id, &guild_id, bonus).await?;
+        let winner_total_length = sqlx::query_scalar::<_, i64>(
+            "SELECT length FROM dicks WHERE user_id = ? AND guild_id = ?",
+        )
+        .bind(&winner.user_id)
+        .bind(&guild_id)
+        .fetch_one(&mut *tx)
+        .await?;
+        sqlx::query(
+            "INSERT INTO length_history (user_id, guild_id, length, growth_amount, growth_type)
+             VALUES (?, ?, ?, ?, 'dotd')",
+        )
+        .bind(&winner.user_id)
+        .bind(&guild_id)
+        .bind(winner_total_length)
+        .bind(bonus)
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query("UPDATE guild_settings SET last_dotd = datetime('now') WHERE guild_id = ?")
+            .bind(&guild_id)
+            .execute(&mut *tx)
+            .await?;
+        Ok::<i64, sqlx::Error>(winner_total_length)
     }
-
-    // Update guild's last DOTD time
-    match sqlx::query!(
-        "UPDATE guild_settings SET last_dotd = datetime('now')
-         WHERE guild_id = ?",
-        guild_id
-    )
-    .execute(&bot.database)
-    .await
-    {
-        Ok(_) => (),
+    .await;
+    let winner_total_length = match awarded {
+        Ok(length) => length,
         Err(why) => {
-            error!("Error updating guild settings: {:?}", why);
+            error!("Error awarding DOTD atomically: {:?}", why);
+            let _ = tx.rollback().await;
+            return Ok(());
         }
     };
+    if let Err(why) = tx.commit().await {
+        error!("Error committing DOTD award: {:?}", why);
+        return Ok(());
+    }
 
     // Get winner info
     let winner_user = match UserId::new(winner.user_id.parse::<u64>().unwrap_or_default())
@@ -257,7 +264,7 @@ pub async fn handle_dotd_command(
                     .color(0xFFD700) // Gold
                     .description(format!(
                         "After careful consideration, the Dick of the Day award goes to... **{}**!\n\nThis \"**{}**\" has been awarded a bonus of **+{} cm**, bringing their total to **{} cm**!\n\nYou are currently **{}{}** in the server.\n\nNext Dick of the Day: {}\n\nCongratulations on your outstanding achievement in the field of... length!",
-                        winner_mention, title, bonus, winner.length + bonus, position, ordinal_suffix(position), next_dotd_discord
+                        winner_mention, title, bonus, winner_total_length, position, ordinal_suffix(position), next_dotd_discord
                     ))
                     .thumbnail(winner_user.face())
                     .footer(CreateEmbedFooter::new("Stay tuned for tomorrow's competition! (and don't forget to /grow)"))

@@ -4,6 +4,8 @@ use crate::commands::daily::{
     update_growth_streak,
 };
 use crate::commands::events::{add_to_community_pot, get_active_global_event};
+use crate::commands::prestige::{add_prestige_bonus, growth_bonus_for_profile};
+use crate::commands::seasons::{active_season, credit_earned_growth};
 use crate::commands::viagra::is_viagra_active;
 use crate::time::check_cooldown_with_minutes;
 use crate::utils::{ordinal_suffix, pluralize};
@@ -19,7 +21,12 @@ use serenity::prelude::*;
 const BASE_GROWTH_MIN_CM: i64 = 1;
 const BASE_GROWTH_MAX_CM: i64 = 10;
 
-async fn apply_streak_reward(bot: &Bot, user_id: &str, guild_id: &str, streak: i64) -> Option<i64> {
+async fn apply_streak_reward(
+    bot: &Bot,
+    user_id: &str,
+    guild_id: &str,
+    streak: i64,
+) -> Option<(i64, i64)> {
     let reward = (1.0 + (streak as f64).ln() * 0.8).round() as i64;
     let reward = reward.clamp(1, 5);
     let now_str = chrono::Utc::now()
@@ -27,6 +34,8 @@ async fn apply_streak_reward(bot: &Bot, user_id: &str, guild_id: &str, streak: i
         .format("%Y-%m-%d %H:%M:%S")
         .to_string();
 
+    let season = active_season(&bot.database).await.ok()?;
+    let mut tx = bot.database.begin().await.ok()?;
     if let Err(why) = sqlx::query(
         "UPDATE dicks
          SET length = length + ?, streak_last_claimed = ?
@@ -36,14 +45,37 @@ async fn apply_streak_reward(bot: &Bot, user_id: &str, guild_id: &str, streak: i
     .bind(now_str)
     .bind(user_id)
     .bind(guild_id)
-    .execute(&bot.database)
+    .execute(&mut *tx)
     .await
     {
         error!("Error applying automatic streak reward: {:?}", why);
         return None;
     }
+    if let Err(why) = credit_earned_growth(&mut tx, season.id, user_id, guild_id, reward).await {
+        error!("Error crediting streak progression: {:?}", why);
+        return None;
+    }
+    let new_length =
+        sqlx::query_scalar::<_, i64>("SELECT length FROM dicks WHERE user_id = ? AND guild_id = ?")
+            .bind(user_id)
+            .bind(guild_id)
+            .fetch_one(&mut *tx)
+            .await
+            .ok()?;
+    sqlx::query(
+        "INSERT INTO length_history (user_id, guild_id, length, growth_amount, growth_type)
+         VALUES (?, ?, ?, ?, 'streak')",
+    )
+    .bind(user_id)
+    .bind(guild_id)
+    .bind(new_length)
+    .bind(reward)
+    .execute(&mut *tx)
+    .await
+    .ok()?;
+    tx.commit().await.ok()?;
 
-    Some(reward)
+    Some((reward, new_length))
 }
 
 pub async fn handle_grow_command(
@@ -169,6 +201,7 @@ pub async fn handle_grow_command(
     // Check if viagra is active for this user
     let viagra_active = is_viagra_active(bot, &user_id, &guild_id).await;
     let daily_boost_percent = consume_daily_growth_boost_percent(bot, &user_id, &guild_id).await;
+    let prestige_bonus_percent = growth_bonus_for_profile(bot, &user_id, &guild_id).await;
 
     let mut multiplier = 1.0;
     let mut boost_notes = Vec::new();
@@ -193,6 +226,11 @@ pub async fn handle_grow_command(
     if let Some(percent) = daily_boost_percent {
         multiplier += percent as f64 / 100.0;
         boost_notes.push(format!("⚡ Daily +{}%", percent));
+    }
+
+    if prestige_bonus_percent > 0 {
+        multiplier = add_prestige_bonus(multiplier, prestige_bonus_percent);
+        boost_notes.push(format!("🏆 Prestige +{}%", prestige_bonus_percent));
     }
 
     if let Some(event) = active_event.as_ref()
@@ -220,20 +258,74 @@ pub async fn handle_grow_command(
         boost_notes.push(format!("🌍 {} +{} cm", event.name, jackpot));
     }
 
-    // Update the database - increment growth count too
-    match sqlx::query!(
-        "UPDATE dicks SET length = length + ?, last_grow = datetime('now'), growth_count = growth_count + 1
-         WHERE user_id = ? AND guild_id = ?",
-        growth,
-        user_id,
-        guild_id
-    )
-    .execute(&bot.database)
-    .await
-    {
-        Ok(_) => (),
+    let season = match active_season(&bot.database).await {
+        Ok(season) => season,
         Err(why) => {
-            error!("Error updating length: {:?}", why);
+            error!("Error selecting active season for growth: {:?}", why);
+            return command
+                .create_response(
+                    &ctx.http,
+                    CreateInteractionResponse::Message(
+                        CreateInteractionResponseMessage::new()
+                            .content(
+                                "Growth is temporarily unavailable while the season rolls over.",
+                            )
+                            .ephemeral(true),
+                    ),
+                )
+                .await;
+        }
+    };
+    let mut tx = match bot.database.begin().await {
+        Ok(tx) => tx,
+        Err(why) => {
+            error!("Error starting growth transaction: {:?}", why);
+            return Ok(());
+        }
+    };
+    let growth_result = async {
+        sqlx::query(
+            "UPDATE dicks
+             SET length = length + ?, last_grow = datetime('now'), growth_count = growth_count + 1
+             WHERE user_id = ? AND guild_id = ?",
+        )
+        .bind(growth)
+        .bind(&user_id)
+        .bind(&guild_id)
+        .execute(&mut *tx)
+        .await?;
+        credit_earned_growth(&mut tx, season.id, &user_id, &guild_id, growth).await?;
+        let new_length = sqlx::query_scalar::<_, i64>(
+            "SELECT length FROM dicks WHERE user_id = ? AND guild_id = ?",
+        )
+        .bind(&user_id)
+        .bind(&guild_id)
+        .fetch_one(&mut *tx)
+        .await?;
+        sqlx::query(
+            "INSERT INTO length_history (user_id, guild_id, length, growth_amount, growth_type)
+             VALUES (?, ?, ?, ?, 'grow')",
+        )
+        .bind(&user_id)
+        .bind(&guild_id)
+        .bind(new_length)
+        .bind(growth)
+        .execute(&mut *tx)
+        .await?;
+        Ok::<i64, sqlx::Error>(new_length)
+    }
+    .await;
+    let new_length = match growth_result {
+        Ok(new_length) => {
+            if let Err(why) = tx.commit().await {
+                error!("Error committing growth transaction: {:?}", why);
+                return Ok(());
+            }
+            new_length
+        }
+        Err(why) => {
+            error!("Error applying atomic growth: {:?}", why);
+            let _ = tx.rollback().await;
             let builder = CreateInteractionResponse::Message(
                 CreateInteractionResponseMessage::new().add_embed(
                     CreateEmbed::new()
@@ -253,54 +345,13 @@ pub async fn handle_grow_command(
         boost_notes.push(format!("🌍 {} pot +{} cm", event.name, pot_amount));
     }
 
-    // Get new length
-    let new_length = match sqlx::query!(
-        "SELECT length FROM dicks WHERE user_id = ? AND guild_id = ?",
-        user_id,
-        guild_id
-    )
-    .fetch_one(&bot.database)
-    .await
-    {
-        Ok(record) => record.length,
-        Err(why) => {
-            error!("Error fetching length: {:?}", why);
-            let builder = CreateInteractionResponse::Message(
-                CreateInteractionResponseMessage::new().add_embed(
-                    CreateEmbed::new()
-                        .title("⚠️ Length Measurement Error")
-                        .description(
-                            "We couldn't measure your updated length. The measuring tape broke.",
-                        )
-                        .color(0xFF0000),
-                ),
-            );
-            return command.create_response(&ctx.http, builder).await;
-        }
-    };
-
-    // Log the growth in length_history
-    if let Err(why) = sqlx::query!(
-        "INSERT INTO length_history (user_id, guild_id, length, growth_amount, growth_type)
-         VALUES (?, ?, ?, ?, 'grow')",
-        user_id,
-        guild_id,
-        new_length,
-        growth
-    )
-    .execute(&bot.database)
-    .await
-    {
-        error!("Error logging growth history: {:?}", why);
-    }
-
     let mut new_length = new_length;
     if let Some(streak_update) = update_growth_streak(bot, &user_id, &guild_id).await {
         if streak_update.used_streak_saver {
             boost_notes.push("🛟 Streak saver".to_string());
         }
 
-        if let Some(streak_reward) =
+        if let Some((streak_reward, streak_length)) =
             apply_streak_reward(bot, &user_id, &guild_id, streak_update.streak).await
         {
             boost_notes.push(format!(
@@ -309,21 +360,7 @@ pub async fn handle_grow_command(
                 streak_reward
             ));
 
-            new_length += streak_reward;
-
-            if let Err(why) = sqlx::query!(
-                "INSERT INTO length_history (user_id, guild_id, length, growth_amount, growth_type)
-                 VALUES (?, ?, ?, ?, 'streak')",
-                user_id,
-                guild_id,
-                new_length,
-                streak_reward
-            )
-            .execute(&bot.database)
-            .await
-            {
-                error!("Error logging automatic streak reward: {:?}", why);
-            }
+            new_length = streak_length;
         }
     }
 
@@ -461,19 +498,15 @@ mod tests {
 
     #[test]
     fn test_streak_reward_curve() {
-        let cases = [
-            (1, 1),
-            (3, 2),
-            (7, 3),
-            (14, 3),
-            (30, 4),
-            (60, 4),
-            (100, 5),
-        ];
+        let cases = [(1, 1), (3, 2), (7, 3), (14, 3), (30, 4), (60, 4), (100, 5)];
         for (streak, expected) in cases {
             let reward = (1.0 + (streak as f64).ln() * 0.8).round() as i64;
             let reward = reward.clamp(1, 5);
-            assert_eq!(reward, expected, "streak {} expected {} got {}", streak, expected, reward);
+            assert_eq!(
+                reward, expected,
+                "streak {} expected {} got {}",
+                streak, expected, reward
+            );
         }
     }
 

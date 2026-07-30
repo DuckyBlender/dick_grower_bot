@@ -1,4 +1,5 @@
 use crate::Bot;
+use crate::commands::seasons::{active_season, credit_earned_growth};
 use chrono::{Duration, NaiveDateTime};
 use log::error;
 use rand::RngExt;
@@ -343,7 +344,7 @@ pub async fn resolve_expired_community_pot(bot: &Bot) -> Option<String> {
     }
 
     let participants = sqlx::query(
-        "SELECT user_id, guild_id, length
+        "SELECT user_id, guild_id
          FROM dicks
          WHERE last_grow >= ? AND last_grow <= ?",
     )
@@ -365,8 +366,7 @@ pub async fn resolve_expired_community_pot(bot: &Bot) -> Option<String> {
     let winner = &participants[winner_idx];
     let user_id = winner.try_get::<String, _>("user_id").ok()?;
     let guild_id = winner.try_get::<String, _>("guild_id").ok()?;
-    let old_length = winner.try_get::<i64, _>("length").ok()?;
-    let new_length = old_length + pot_amount;
+    let season = active_season(&bot.database).await.ok()?;
 
     let mut tx = bot.database.begin().await.ok()?;
 
@@ -375,6 +375,21 @@ pub async fn resolve_expired_community_pot(bot: &Bot) -> Option<String> {
         .bind(&user_id)
         .bind(&guild_id)
         .execute(&mut *tx)
+        .await
+        .is_err()
+    {
+        return None;
+    }
+
+    let new_length =
+        sqlx::query_scalar::<_, i64>("SELECT length FROM dicks WHERE user_id = ? AND guild_id = ?")
+            .bind(&user_id)
+            .bind(&guild_id)
+            .fetch_one(&mut *tx)
+            .await
+            .ok()?;
+
+    if credit_earned_growth(&mut tx, season.id, &user_id, &guild_id, pot_amount)
         .await
         .is_err()
     {

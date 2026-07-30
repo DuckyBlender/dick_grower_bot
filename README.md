@@ -8,6 +8,8 @@ A Discord bot where users compete to grow the biggest virtual dick in their serv
 - **`/grow`** - Grow your dick once per hour (always positive growth!)
 - **`/top`** - View the server's dick leaderboard
 - **`/global`** - View the global dick leaderboard across all servers
+- **`/season [scope] [period]`** - View current or previous server/global season standings
+- **`/prestige`** - Reset length at earned milestones for a capped permanent growth bonus
 - **`/stats <user>`** - View detailed dick statistics
 - **`/help`** - Show command help
 - **`/daily`** - Claim a once-a-day random perk
@@ -57,6 +59,8 @@ A Discord bot where users compete to grow the biggest virtual dick in their serv
 | `/grow` | Grow your dick (1-10cm, +20% with viagra) | 60 minutes |
 | `/top` | Server leaderboard | None |
 | `/global` | Global leaderboard | None |
+| `/season [scope] [period]` | Current/previous seasonal leaderboard | None |
+| `/prestige` | Reset eligible progress for permanent PP | None |
 | `/pvp <bet>` | Dick battle with cm betting | None |
 | `/stats <user>` | View user statistics | None |
 | `/dickoftheday` | Random daily winner selection | 24 hours |
@@ -103,6 +107,20 @@ A Discord bot where users compete to grow the biggest virtual dick in their serv
 - **Activation**: If no event is active, `/events` has a 50% chance to start one
 - **Scope**: Events are global across all servers, not per-server
 
+### Seasons
+- Seasons use calendar-month UTC boundaries; the inaugural season is extended when fewer than 14 days remain at launch.
+- `/season` supports server/global scope and current/previous standings.
+- Seasonal score counts earned growth from `/grow`, direct daily cm, streak rewards, Dick of the Day, jackpots, and community-pot payouts.
+- Gifts, PVP transfers, and prestige resets do not affect seasonal score.
+- The top three server and global profiles receive cosmetic medals recorded in `/stats` for the following season.
+
+### Prestige
+- Prestige is tracked per server profile and requires both current length and earned prestige progress.
+- The next requirement is `500 × 2^prestige_level` cm.
+- A prestige awards `5 + floor(2 × log2(progress / requirement))` PP, then resets current length and earned progress to zero.
+- Each PP adds 1% to `/grow`, capped at +25%; season score and all other stats are preserved.
+- Gifts and PVP do not build prestige progress, preventing permanent-power funneling.
+
 ### Special Events
 - **Dick of the Day**: 10-25 cm bonus (daily)
 - **PVP Victories**: Win opponent's bet amount
@@ -116,6 +134,8 @@ A Discord bot where users compete to grow the biggest virtual dick in their serv
 - `length_history` - Growth tracking over time
 - `guild_settings` - Server-specific settings
 - `global_events` - Active and historical global event windows
+- `seasons`, `season_scores`, `season_placements` - Seasonal scoring and archived cosmetic medals
+- `prestige_history` - Auditable prestige resets and PP awards
 
 ### Growth Types Tracked
 - `grow` - Regular hourly growth
@@ -144,6 +164,7 @@ Located in `migrations/` directory:
 - `20250309235354_initialize.sql` - Core tables
 - `20250310000000_add_features.sql` - New features (viagra, history, caching)
 - `20260426233000_add_daily_streaks_events.sql` - Daily rewards, streaks, global events
+- `20260726000000_add_seasons_prestige.sql` - Seasons, prestige, and leaderboard indexes
 
 ## Features Implemented
 
@@ -157,6 +178,9 @@ Located in `migrations/` directory:
 ✅ **Daily Rewards** - Random daily perks and cm bonuses  
 ✅ **Growth Streaks** - Consecutive daily growth rewards in `/grow` and `/stats`  
 ✅ **Global Events** - Shared bonus windows across every server  
+✅ **Monthly Seasons** - Earned-growth server/global rankings and cosmetic medals
+✅ **Prestige Progression** - Guarded resets with capped permanent `/grow` bonuses
+✅ **Faster Leaderboards** - Indexed queries with no per-row Discord REST calls
 
 ### Battle System
 ✅ **PVP Challenges** with betting  

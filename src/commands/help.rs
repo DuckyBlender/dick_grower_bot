@@ -12,6 +12,8 @@ pub async fn handle_help_command(
         `/grow` - Grow your dick once per 60 minutes (always positive growth now!)\n\
         `/top` - View the server's dick leaderboard\n\
         `/global` - View the global dick leaderboard\n\
+        `/season [scope] [period]` - View server/global seasonal rankings\n\
+        `/prestige` - Reset length after an earned milestone for a permanent /grow bonus\n\
         `/pvp <bet>` - Challenge someone to a dick battle with a cm bet\n\
         `/stats <user>` - View your or someone else's dick stats\n\
         `/dickoftheday` - Select a random Dick of the Day\n\
