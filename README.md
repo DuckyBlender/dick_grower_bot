@@ -13,7 +13,7 @@ All commands work in servers only. Each server has its own leaderboard and stats
 | `/viagra` | +20% growth for 6 hours | 20 hours |
 | `/event` | Show the current global event, or when the next one may start | None |
 | `/pvp <bet>` | Open a dick battle anyone can accept | None |
-| `/gift <user> <amount>` | Give some of your length to someone else | None |
+| `/gift <user> <amount>` | Give some of your length to someone else | 50 cm sent and 50 cm received per rolling 7 days |
 | `/dickoftheday` | Award 10-25 cm to a random active grower | Once per server per UTC day |
 | `/stats [user]` | Length, rank, streaks, perks, viagra and battle stats | None |
 | `/top` | Server top 10, plus your own position | None |
@@ -61,6 +61,11 @@ The bot's status shows the active event.
 - Both players roll 1-100. The higher roll takes the bet; a tie returns everything.
 - Both players must be able to cover the bet when the battle resolves.
 - You can only have one open challenge. Starting a new one cancels the old one.
+
+### Gifts
+- You can send at most **50 cm**, and receive at most **50 cm**, in any rolling 7-day window.
+- Capping what people receive stops several alt accounts from feeding one main account.
+- The limit is `GIFT_LIMIT_CM` in `src/commands/gift.rs`.
 
 ### Dick of the Day
 - Anyone can run `/dickoftheday` once per server per UTC day.

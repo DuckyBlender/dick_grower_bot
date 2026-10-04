@@ -1,3 +1,4 @@
+use crate::commands::gift::GIFT_LIMIT_CM;
 use crate::commands::grow::DEFAULT_COOLDOWN_MINUTES;
 use crate::commands::{Cmd, CommandResult, viagra};
 use crate::utils::{colors, embed};
@@ -27,9 +28,11 @@ pub async fn run(cmd: &Cmd<'_>) -> CommandResult {
         .field("🌱 Growing", growing, false)
         .field(
             "⚔️ Competing",
-            "`/pvp <bet>` - Challenge anyone to a dick battle\n\
-             `/dickoftheday` - Crown a random active grower (once per day)\n\
-             `/gift <user> <amount>` - Give some of your length away",
+            format!(
+                "`/pvp <bet>` - Challenge anyone to a dick battle\n\
+                 `/dickoftheday` - Crown a random active grower (once per day)\n\
+                 `/gift <user> <amount>` - Give some of your length away (max {GIFT_LIMIT_CM} cm sent and received per week)"
+            ),
             false,
         )
         .field(
