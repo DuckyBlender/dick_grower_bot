@@ -1,38 +1,38 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT viagra_last_used, viagra_active_until FROM dicks WHERE user_id = ? AND guild_id = ?",
+  "query": "SELECT user_id, length FROM dicks\n         WHERE guild_id = ?\n         ORDER BY length DESC, user_id ASC\n         LIMIT 10",
   "describe": {
     "columns": [
       {
-        "name": "viagra_last_used",
+        "name": "user_id",
         "ordinal": 0,
         "type_info": "Text",
         "origin": {
           "Table": {
             "table": "dicks",
-            "name": "viagra_last_used"
+            "name": "user_id"
           }
         }
       },
       {
-        "name": "viagra_active_until",
+        "name": "length",
         "ordinal": 1,
-        "type_info": "Text",
+        "type_info": "Integer",
         "origin": {
           "Table": {
             "table": "dicks",
-            "name": "viagra_active_until"
+            "name": "length"
           }
         }
       }
     ],
     "parameters": {
-      "Right": 2
+      "Right": 1
     },
     "nullable": [
-      true,
-      true
+      false,
+      false
     ]
   },
-  "hash": "96899434592c16bd60f2b815088489018b735d935e1d8e9376f7272f955cb716"
+  "hash": "fbabc53e76531cf8503cd087b4e117eddfd9a49ea86874412ff9a1d9bedfb3b6"
 }

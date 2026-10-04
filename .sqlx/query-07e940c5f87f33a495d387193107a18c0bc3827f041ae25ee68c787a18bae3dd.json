@@ -1,0 +1,50 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT daily_streak, last_streak_date, daily_streak_savers\n         FROM dicks WHERE user_id = ? AND guild_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "daily_streak",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "dicks",
+            "name": "daily_streak"
+          }
+        }
+      },
+      {
+        "name": "last_streak_date",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "dicks",
+            "name": "last_streak_date"
+          }
+        }
+      },
+      {
+        "name": "daily_streak_savers",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "dicks",
+            "name": "daily_streak_savers"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "07e940c5f87f33a495d387193107a18c0bc3827f041ae25ee68c787a18bae3dd"
+}

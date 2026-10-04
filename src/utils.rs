@@ -1,28 +1,27 @@
-use crate::Bot;
-use serenity::prelude::*;
+use serenity::all::CreateEmbed;
 
-#[derive(Debug)]
-pub struct BotStats {
-    pub server_count: usize,
-    pub dick_count: i64,
+pub mod colors {
+    pub const ERROR: u32 = 0xE74C3C;
+    pub const WARNING: u32 = 0xFF5733;
+    pub const NEUTRAL: u32 = 0xAAAAAA;
+    pub const SUCCESS: u32 = 0x2ECC71;
+    pub const INFO: u32 = 0x3498DB;
+    pub const PURPLE: u32 = 0x9B59B6;
+    pub const GOLD: u32 = 0xF1C40F;
 }
 
-pub async fn get_bot_stats(ctx: &Context, bot: &Bot) -> Result<BotStats, sqlx::Error> {
-    let server_count = ctx.cache.guilds().len();
-
-    let dick_count_result = sqlx::query!("SELECT COUNT(*) as count FROM dicks")
-        .fetch_one(&bot.database)
-        .await?;
-
-    let dick_count = dick_count_result.count;
-
-    Ok(BotStats {
-        server_count,
-        dick_count,
-    })
+pub fn embed(title: impl Into<String>, description: impl Into<String>, color: u32) -> CreateEmbed {
+    CreateEmbed::new()
+        .title(title)
+        .description(description)
+        .color(color)
 }
 
-pub fn get_fun_title_by_rank(rank: usize) -> &'static str {
+pub fn error_embed(title: &str, description: impl Into<String>) -> CreateEmbed {
+    embed(title, description, colors::ERROR)
+}
+
+pub fn rank_title(rank: usize) -> &'static str {
     match rank {
         1 => "GOD OF DICKS",
         2 => "Legendary Organ",
@@ -32,19 +31,25 @@ pub fn get_fun_title_by_rank(rank: usize) -> &'static str {
     }
 }
 
-pub fn ordinal_suffix(n: usize) -> &'static str {
-    let rem_100 = n % 100;
-    let rem_10 = n % 10;
-    if (11..=13).contains(&rem_100) {
-        "th"
-    } else {
-        match rem_10 {
-            1 => "st",
-            2 => "nd",
-            3 => "rd",
-            _ => "th",
-        }
+pub fn medal(index: usize) -> &'static str {
+    match index {
+        0 => "🥇",
+        1 => "🥈",
+        2 => "🥉",
+        _ => "🔹",
     }
+}
+
+/// Formats a number with its English ordinal suffix, e.g. `1st`, `12th`, `23rd`.
+pub fn ordinal(n: usize) -> String {
+    let suffix = match (n % 10, n % 100) {
+        (_, 11..=13) => "th",
+        (1, _) => "st",
+        (2, _) => "nd",
+        (3, _) => "rd",
+        _ => "th",
+    };
+    format!("{n}{suffix}")
 }
 
 pub fn pluralize(count: i64, singular: &str, plural: &str) -> String {
@@ -56,10 +61,42 @@ pub fn pluralize(count: i64, singular: &str, plural: &str) -> String {
 }
 
 pub fn escape_markdown(text: &str) -> String {
-    text.replace('\\', "\\\\")
-        .replace('*', "\\*")
-        .replace('_', "\\_")
-        .replace('`', "\\`")
-        .replace('~', "\\~")
-        .replace('|', "\\|")
+    let mut escaped = String::with_capacity(text.len());
+    for c in text.chars() {
+        if matches!(c, '\\' | '*' | '_' | '`' | '~' | '|') {
+            escaped.push('\\');
+        }
+        escaped.push(c);
+    }
+    escaped
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ordinals() {
+        let cases = [
+            (1, "1st"),
+            (2, "2nd"),
+            (3, "3rd"),
+            (4, "4th"),
+            (11, "11th"),
+            (12, "12th"),
+            (13, "13th"),
+            (21, "21st"),
+            (102, "102nd"),
+            (111, "111th"),
+        ];
+        for (n, expected) in cases {
+            assert_eq!(ordinal(n), expected);
+        }
+    }
+
+    #[test]
+    fn escapes_markdown() {
+        assert_eq!(escape_markdown("a_b*c"), "a\\_b\\*c");
+        assert_eq!(escape_markdown("plain"), "plain");
+    }
 }

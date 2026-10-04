@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE dicks SET daily_lucky_rolls = daily_lucky_rolls + 1\n                 WHERE user_id = ? AND guild_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "c8d02e8a6567a2bbe48f82564cd4bc227f2b51a75d2519bca0c675c7cff8b228"
+}

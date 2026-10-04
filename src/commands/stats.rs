@@ -1,274 +1,187 @@
-use crate::Bot;
-use crate::commands::escape_markdown;
-use crate::commands::events::get_active_global_event;
-use crate::commands::viagra::get_viagra_status;
-use crate::time::check_cooldown_with_minutes;
-use crate::utils::{get_fun_title_by_rank, ordinal_suffix, pluralize};
-use chrono::NaiveDateTime;
-use log::error;
+use crate::commands::events::active_event;
+use crate::commands::{Cmd, CommandResult, grow, viagra};
+use crate::db;
+use crate::time;
+use crate::utils::{colors, embed, escape_markdown, ordinal, pluralize, rank_title};
+use chrono::Duration;
 use serenity::all::{
-    CommandInteraction, CreateEmbed, CreateEmbedFooter, CreateInteractionResponse,
-    CreateInteractionResponseMessage,
+    CommandOptionType, CreateCommand, CreateCommandOption, CreateEmbedFooter, ResolvedValue,
 };
-use serenity::prelude::*;
-use sqlx::Row;
 
-struct UserStats {
-    length: i64,
-    dick_of_day_count: i64,
-    last_grow: String,
-    pvp_wins: i64,
-    pvp_losses: i64,
-    pvp_max_streak: i64,
-    pvp_current_streak: i64,
-    cm_won: i64,
-    cm_lost: i64,
-    daily_streak: i64,
-    best_daily_streak: i64,
+pub fn register() -> CreateCommand {
+    CreateCommand::new("stats")
+        .description("View your or another user's stats")
+        .add_option(
+            CreateCommandOption::new(
+                CommandOptionType::User,
+                "user",
+                "The user whose stats you want to view",
+            )
+            .required(false),
+        )
 }
 
-pub async fn handle_stats_command(
-    ctx: &Context,
-    command: &CommandInteraction,
-) -> Result<(), serenity::Error> {
-    let data = ctx.data.read().await;
-    let bot = data.get::<Bot>().unwrap();
+pub async fn run(cmd: &Cmd<'_>) -> CommandResult {
+    let target = cmd
+        .interaction
+        .data
+        .options()
+        .into_iter()
+        .find_map(|option| match option.value {
+            ResolvedValue::User(user, _) => Some(user),
+            _ => None,
+        })
+        .unwrap_or(&cmd.interaction.user);
+    let is_self = target.id == cmd.interaction.user.id;
+    let user_id = target.id.to_string();
 
-    // Check if a user was specified
-    let target_user = if let Some(option) = command.data.options.first() {
-        match option.value.as_user_id() {
-            Some(user_id) => {
-                match user_id.to_user(ctx).await {
-                    Ok(user) => user,
-                    Err(_) => {
-                        // Could not fetch user, fallback to command user
-                        command.user.clone()
-                    }
-                }
-            }
-            None => command.user.clone(),
-        }
-    } else {
-        command.user.clone()
-    };
-
-    let is_self = target_user.id == command.user.id;
-    let user_id = target_user.id.to_string();
-    let guild_id = command.guild_id.unwrap().to_string();
-
-    // Get user stats
-    let user_stats = match sqlx::query(
-        "SELECT length, dick_of_day_count, last_grow, 
-                pvp_wins, pvp_losses, pvp_max_streak, pvp_current_streak,
-                cm_won, cm_lost, daily_streak, best_daily_streak
-         FROM dicks 
+    let Some(stats) = sqlx::query!(
+        "SELECT length, dick_of_day_count, last_grow, growth_count,
+                pvp_wins, pvp_losses, pvp_max_streak, pvp_current_streak, cm_won, cm_lost,
+                daily_streak, best_daily_streak, viagra_last_used, viagra_active_until,
+                daily_growth_boost_percent, daily_cooldown_skips, daily_streak_savers,
+                daily_lucky_rolls
+         FROM dicks
          WHERE user_id = ? AND guild_id = ?",
-    )
-    .bind(&user_id)
-    .bind(&guild_id)
-    .fetch_optional(&bot.database)
-    .await
-    {
-        Ok(Some(row)) => UserStats {
-            length: row.try_get("length").unwrap_or_default(),
-            dick_of_day_count: row.try_get("dick_of_day_count").unwrap_or_default(),
-            last_grow: row.try_get("last_grow").unwrap_or_default(),
-            pvp_wins: row.try_get("pvp_wins").unwrap_or_default(),
-            pvp_losses: row.try_get("pvp_losses").unwrap_or_default(),
-            pvp_max_streak: row.try_get("pvp_max_streak").unwrap_or_default(),
-            pvp_current_streak: row.try_get("pvp_current_streak").unwrap_or_default(),
-            cm_won: row.try_get("cm_won").unwrap_or_default(),
-            cm_lost: row.try_get("cm_lost").unwrap_or_default(),
-            daily_streak: row.try_get("daily_streak").unwrap_or_default(),
-            best_daily_streak: row.try_get("best_daily_streak").unwrap_or_default(),
-        },
-        Ok(None) => {
-            let msg = if is_self {
-                "You haven't started growing your dick yet! Use /grow to begin your journey to greatness."
-            } else {
-                "This user hasn't started growing their dick yet!"
-            };
-
-            let builder = CreateInteractionResponse::Message(
-                CreateInteractionResponseMessage::new().add_embed(
-                    CreateEmbed::new()
-                        .title("❓ No Stats Found")
-                        .description(msg)
-                        .color(0xAAAAAA),
-                ),
-            );
-            return command.create_response(&ctx.http, builder).await;
-        }
-        Err(why) => {
-            error!("Database error: {:?}", why);
-            let builder = CreateInteractionResponse::Message(
-                CreateInteractionResponseMessage::new()
-                    .add_embed(
-                        CreateEmbed::new()
-                            .title("⚠️ Database Error")
-                            .description("Failed to retrieve the stats. The server's ruler broke.")
-                            .color(0xFF0000),
-                    )
-                    .ephemeral(true),
-            );
-            return command.create_response(&ctx.http, builder).await;
-        }
-    };
-
-    // Get rank
-    let rank = match sqlx::query!(
-        "SELECT COUNT(*) as rank FROM dicks 
-         WHERE guild_id = ? AND length > (
-            SELECT length FROM dicks WHERE user_id = ? AND guild_id = ?
-         )",
-        guild_id,
         user_id,
-        guild_id
+        cmd.guild
     )
-    .fetch_one(&bot.database)
-    .await
-    {
-        Ok(record) => record.rank + 1, // +1 because we're counting users with MORE length
-        Err(why) => {
-            error!("Error fetching rank: {:?}", why);
-            0
-        }
-    };
-    let rank = rank as usize; // Safe to cast to usize
-
-    // Calculate growth status - only show for own user
-    let last_grow = NaiveDateTime::parse_from_str(&user_stats.last_grow, "%Y-%m-%d %H:%M:%S")
-        .unwrap_or_default();
-
-    // Check if user can grow today
-    let active_event = get_active_global_event(bot).await;
-    let cooldown_minutes = active_event
-        .as_ref()
-        .and_then(|event| event.grow_cooldown_minutes())
-        .unwrap_or(60);
-    let time_left = check_cooldown_with_minutes(&last_grow, cooldown_minutes);
-    let unix_timestamp = chrono::Utc::now().timestamp() + time_left.num_seconds();
-    let discord_timestamp = format!("<t:{}:R>", unix_timestamp);
-
-    let growth_status = if is_self {
-        if time_left.is_zero() {
-            "✅ You can grow now! Use /grow".to_string()
+    .fetch_optional(&cmd.bot.db)
+    .await?
+    else {
+        let message = if is_self {
+            "You haven't started growing your dick yet! Use /grow to begin your journey to greatness."
         } else {
-            format!("⏰ Next growth in: {discord_timestamp}",)
-        }
-    } else if time_left.is_zero() {
-        "✅ Can grow now".to_string()
-    } else {
-        "⏰ Already grew today".to_string()
+            "This user hasn't started growing their dick yet!"
+        };
+        return cmd
+            .reply_ephemeral(embed("❓ No Stats Found", message, colors::NEUTRAL))
+            .await;
     };
 
-    // Get viagra status
-    let (viagra_active, effect_ends, next_available) =
-        get_viagra_status(bot, &user_id, &guild_id).await;
+    let rank = db::guild_rank(&cmd.bot.db, &cmd.guild, stats.length).await?;
+    let event = active_event(cmd.bot).await?;
+    let cooldown = grow::cooldown_minutes(event.as_ref());
+    let ready_at = time::parse(&stats.last_grow)
+        .map(|last| last + Duration::minutes(cooldown))
+        .filter(|&ready| ready > time::now());
+    let growth_status = match (ready_at, is_self) {
+        (None, true) => "✅ Ready! Use /grow".to_string(),
+        (None, false) => "✅ Ready to grow".to_string(),
+        (Some(ready), _) => format!("⏰ Next grow {}", time::relative(ready)),
+    };
 
-    let viagra_status = if viagra_active {
-        if let Some(ends) = effect_ends {
-            format!("💊 **ACTIVE** (ends {})", ends)
+    let viagra_status =
+        if let Some(until) = viagra::active_until(stats.viagra_active_until.as_deref()) {
+            format!("💊 **Active**, wears off {}", time::relative(until))
+        } else if let Some(ready) = viagra::cooldown_ends(stats.viagra_last_used.as_deref()) {
+            format!("⏳ Available {}", time::relative(ready))
         } else {
-            "💊 **ACTIVE**".to_string()
+            "✅ Available now".to_string()
+        };
+
+    let mut perks = Vec::new();
+    if stats.daily_growth_boost_percent > 0 {
+        perks.push(format!(
+            "⚡ Next grow +{}%",
+            stats.daily_growth_boost_percent
+        ));
+    }
+    for (count, label) in [
+        (stats.daily_cooldown_skips, "⏩ Cooldown skip"),
+        (stats.daily_lucky_rolls, "🍀 Lucky roll"),
+        (stats.daily_streak_savers, "🛟 Streak saver"),
+    ] {
+        if count > 0 {
+            perks.push(format!("{label} ×{count}"));
         }
-    } else if let Some(available) = next_available {
-        format!("💊 Available {}", available)
+    }
+    let perks = if perks.is_empty() {
+        "None. Try /daily!".to_string()
     } else {
-        "💊 Available now".to_string()
+        perks.join("\n")
     };
 
-    // Calculate win rate
-    let total_fights = user_stats.pvp_wins + user_stats.pvp_losses;
-    let win_rate = if total_fights > 0 {
-        (user_stats.pvp_wins as f64 / total_fights as f64) * 100.0
+    let fights = stats.pvp_wins + stats.pvp_losses;
+    let win_rate = if fights > 0 {
+        stats.pvp_wins as f64 / fights as f64 * 100.0
     } else {
         0.0
     };
 
-    // Funny comment based on length
-    let fun_title = get_fun_title_by_rank(rank);
-    let length_comment = if user_stats.length <= 0 {
-        if is_self {
-            "Your dick is practically an innie at this point. Keep trying!"
-        } else {
-            "Their dick is practically an innie at this point. Tragic!"
-        }
-    } else if user_stats.length < 50 {
-        "It's... cute? At least that's what they'll say to be nice."
-    } else if user_stats.length < 100 {
-        "Not bad! In the average zone. But who wants to be average?"
-    } else if user_stats.length < 150 {
-        "Impressive length! That's some serious heat down there."
-    } else if user_stats.length < 200 {
-        "WOW! That's a third leg, not a dick! Special pants required?"
-    } else {
-        "LEGENDARY! Scientists want to study this mutation. BEWARE!"
+    let assessment = match stats.length {
+        ..=0 if is_self => "Your dick is practically an innie at this point. Keep trying!",
+        ..=0 => "Their dick is practically an innie at this point. Tragic!",
+        1..50 => "It's... cute? At least that's what they'll say to be nice.",
+        50..100 => "Not bad! In the average zone. But who wants to be average?",
+        100..150 => "Impressive length! That's some serious heat down there.",
+        150..200 => "WOW! That's a third leg, not a dick! Special pants required?",
+        _ => "LEGENDARY! Scientists want to study this mutation. BEWARE!",
     };
 
-    let escaped_target_name = escape_markdown(&target_user.name);
+    let name = escape_markdown(target.display_name());
     let description = if is_self {
         "Here's everything you wanted to know about your cucumber (and probably some things you didn't):".to_string()
     } else {
-        format!(
-            "Here's everything to know about {}'s cucumber:",
-            escaped_target_name
-        )
+        format!("Here's everything to know about {name}'s cucumber:")
     };
-
-    let footer_text = if is_self {
+    let footer = if is_self {
         "Remember to /grow every day for maximum results!"
     } else {
         "Use /stats without parameters to see your own stats!"
     };
 
-    let builder = CreateInteractionResponse::Message(
-        CreateInteractionResponseMessage::new()
-            .add_embed(
-                CreateEmbed::new()
-                    .title(format!("🍆 {}'s Dick Stats", escaped_target_name))
-                    .description(description)
-                    .color(0x9B59B6) // Purple
-                    .field("Current Length", format!("**{} cm**", user_stats.length), true)
-                    .field("Server Rank", format!("**{}{}**", rank, ordinal_suffix(rank)), true)
-                    .field("Title", fun_title, true)
-                    .field(
-                        "Dick of the Day",
-                        format!(
-                            "**{}**",
-                            pluralize(user_stats.dick_of_day_count, "time", "times")
-                        ),
-                        true,
-                    )
-                    .field(
-                        "Daily Growth Streak",
-                        format!(
-                            "**{}**\nBest: **{}**",
-                            pluralize(user_stats.daily_streak, "day", "days"),
-                            pluralize(user_stats.best_daily_streak, "day", "days")
-                        ),
-                        true,
-                    )
-                    .field("Growth Status", growth_status, false)
-                    .field("Viagra Status", viagra_status, true)
-                    .field(
-                        "Battle Stats",
-                        format!(
-                            "Win rate: **{:.2}%**\nFights: **{}**\nWins: **{}**\nMax win streak: **{}**\nCurrent streak: **{}**\nAcquired length: **{} cm**\nLost length: **{} cm**",
-                            win_rate,
-                            total_fights,
-                            user_stats.pvp_wins,
-                            user_stats.pvp_max_streak,
-                            user_stats.pvp_current_streak,
-                            user_stats.cm_won,
-                            user_stats.cm_lost
-                        ),
-                        false
-                    )
-                    .field("Professional Assessment", length_comment, false)
-                    .thumbnail(target_user.face())
-                    .footer(CreateEmbedFooter::new(footer_text)),
-            )
-    );
-    command.create_response(&ctx.http, builder).await
+    cmd.reply(
+        embed(
+            format!("🍆 {name}'s Dick Stats"),
+            description,
+            colors::PURPLE,
+        )
+        .field("📏 Length", format!("**{} cm**", stats.length), true)
+        .field("🏅 Server Rank", format!("**{}**", ordinal(rank)), true)
+        .field("👑 Title", rank_title(rank), true)
+        .field(
+            "🌱 Growth",
+            format!(
+                "{}\n{growth_status}",
+                pluralize(stats.growth_count, "grow", "grows")
+            ),
+            true,
+        )
+        .field(
+            "🔥 Daily Streak",
+            format!(
+                "**{}**\nBest: {}",
+                pluralize(stats.daily_streak, "day", "days"),
+                pluralize(stats.best_daily_streak, "day", "days")
+            ),
+            true,
+        )
+        .field(
+            "🏆 Dick of the Day",
+            pluralize(stats.dick_of_day_count, "time", "times"),
+            true,
+        )
+        .field("💊 Viagra", viagra_status, true)
+        .field("🎒 Perks", perks, true)
+        .field(
+            "⚔️ Battle Stats",
+            format!(
+                "**{}W / {}L** ({win_rate:.1}% win rate)\n\
+                     Current streak: **{}** · Best streak: **{}**\n\
+                     Won: **{} cm** · Lost: **{} cm**",
+                stats.pvp_wins,
+                stats.pvp_losses,
+                stats.pvp_current_streak,
+                stats.pvp_max_streak,
+                stats.cm_won,
+                stats.cm_lost
+            ),
+            false,
+        )
+        .field("🩺 Professional Assessment", assessment, false)
+        .thumbnail(target.face())
+        .footer(CreateEmbedFooter::new(footer)),
+    )
+    .await
 }

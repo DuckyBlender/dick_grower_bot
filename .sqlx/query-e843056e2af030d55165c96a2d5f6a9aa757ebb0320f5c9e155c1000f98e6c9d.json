@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT length FROM dicks WHERE user_id = ? AND guild_id = ?",
+  "query": "UPDATE dicks SET length = length + ? WHERE user_id = ? AND guild_id = ? RETURNING length",
   "describe": {
     "columns": [
       {
@@ -16,11 +16,11 @@
       }
     ],
     "parameters": {
-      "Right": 2
+      "Right": 3
     },
     "nullable": [
       false
     ]
   },
-  "hash": "7bfdfd02d16691587dad63ef1354e349d7f4af24065bd530fb0e413f0cf8f192"
+  "hash": "e843056e2af030d55165c96a2d5f6a9aa757ebb0320f5c9e155c1000f98e6c9d"
 }

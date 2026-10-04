@@ -1,199 +1,86 @@
-use crate::Bot;
-use crate::commands::escape_markdown;
-use crate::utils::get_bot_stats;
-use crate::{GUILD_NAME_CACHE_DURATION, GuildNameCache};
-use log::{error, info};
+use crate::commands::top::display_names;
+use crate::commands::{Cmd, CommandResult};
+use crate::utils::{colors, embed, escape_markdown, medal};
 use rand::seq::IndexedRandom;
-use serenity::all::{
-    CommandInteraction, CreateEmbed, CreateEmbedFooter, CreateInteractionResponseFollowup,
-};
-use serenity::model::id::UserId;
-use serenity::prelude::*;
-use std::time::{SystemTime, UNIX_EPOCH};
+use serenity::all::{Cache, CreateCommand, CreateEmbedFooter, GuildId};
 
-async fn get_cached_guild_name(ctx: &Context, bot: &Bot, guild_id: u64) -> String {
-    let current_time = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
-
-    {
-        let cache = bot.guild_name_cache.read().await;
-        if let Some(cached) = cache.get(&guild_id)
-            && current_time.saturating_sub(cached.cached_at) < GUILD_NAME_CACHE_DURATION
-        {
-            info!("Using cached guild name for guild {}", guild_id);
-            return cached.name.clone();
-        }
-    }
-
-    info!("Refreshing cached guild name for guild {}", guild_id);
-
-    let name = match ctx.http.get_guild(guild_id.into()).await {
-        Ok(guild) => {
-            if guild.features.contains(&"COMMUNITY".to_string()) {
-                escape_markdown(&guild.name)
-            } else {
-                "private server".to_string()
-            }
-        }
-        Err(_) => "unknown server".to_string(),
-    };
-
-    let mut cache = bot.guild_name_cache.write().await;
-    cache.insert(
-        guild_id,
-        GuildNameCache {
-            name: name.clone(),
-            cached_at: current_time,
-        },
-    );
-
-    name
+pub fn register() -> CreateCommand {
+    CreateCommand::new("global")
+        .description("Show the top players with the biggest weapons across all servers")
 }
 
-pub async fn handle_global_command(
-    ctx: &Context,
-    command: &CommandInteraction,
-) -> Result<(), serenity::Error> {
-    let data = ctx.data.read().await;
-    let bot = data.get::<Bot>().unwrap();
-
-    // Defer the command to avoid timeout
-    // This is important for commands that take a while to process
-    command.defer(&ctx.http).await?;
-
-    // Get top 10 users globally
-    let top_users = match sqlx::query!(
-        "SELECT user_id, length, guild_id FROM dicks 
-         ORDER BY length DESC LIMIT 10"
-    )
-    .fetch_all(&bot.database)
-    .await
-    {
-        Ok(users) => users,
-        Err(why) => {
-            error!("Error fetching global top users: {:?}", why);
-            command.create_followup(&ctx.http,
-                CreateInteractionResponseFollowup::new().add_embed(
-                    CreateEmbed::new()
-                        .title("⚠️ Global Leaderboard Error")
-                        .description(
-                            "Failed to measure all the world's dicks. The server is overwhelmed.",
-                        )
-                        .color(0xFF0000),
-                ),
-            ).await?;
-            return Ok(());
+/// Only Community servers are named publicly; everything else stays anonymous.
+fn guild_label(cache: &Cache, raw_id: &str) -> String {
+    let guild = raw_id
+        .parse::<u64>()
+        .ok()
+        .filter(|&id| id != 0)
+        .and_then(|id| cache.guild(GuildId::new(id)));
+    match guild {
+        Some(guild) if guild.features.iter().any(|feature| feature == "COMMUNITY") => {
+            escape_markdown(&guild.name)
         }
-    };
+        Some(_) => "a private server".to_string(),
+        None => "an unknown server".to_string(),
+    }
+}
 
-    if top_users.is_empty() {
-        command
-            .create_followup(
-                &ctx.http,
-                CreateInteractionResponseFollowup::new().add_embed(
-                    CreateEmbed::new()
-                        .title("👀 No Dicks Found")
-                        .description(
-                            "Nobody has grown their dick anywhere yet. The world awaits a pioneer!",
-                        )
-                        .color(0xAAAAAA),
-                ),
-            )
-            .await?;
-        return Ok(());
+pub async fn run(cmd: &Cmd<'_>) -> CommandResult {
+    cmd.defer().await?;
+
+    let top = sqlx::query!(
+        "SELECT user_id, guild_id, length FROM dicks
+         ORDER BY length DESC, user_id ASC
+         LIMIT 10"
+    )
+    .fetch_all(&cmd.bot.db)
+    .await?;
+
+    if top.is_empty() {
+        return cmd
+            .edit(embed(
+                "👀 No Dicks Found",
+                "Nobody has grown their dick anywhere yet. The world awaits a pioneer!",
+                colors::NEUTRAL,
+            ))
+            .await;
     }
 
-    // Fetch bot stats
-    let (server_count_str, dick_count_str) = match get_bot_stats(ctx, bot).await {
-        Ok(stats) => (stats.server_count.to_string(), stats.dick_count.to_string()),
-        Err(why) => {
-            error!("Error fetching bot stats for global command: {:?}", why);
-            ("?".to_string(), "?".to_string()) // Use "?" on error
-        }
-    };
+    let total_dicks = sqlx::query_scalar!("SELECT COUNT(*) FROM dicks")
+        .fetch_one(&cmd.bot.db)
+        .await?;
+    let names = display_names(cmd.ctx, top.iter().map(|row| row.user_id.as_str())).await;
 
-    // Build the global leaderboard
-    let mut description = "Here are the biggest dicks in the entire world:\n\n".to_string();
-
-    for (i, user) in top_users.iter().enumerate() {
-        let medal = match i {
-            0 => "🥇",
-            1 => "🥈",
-            2 => "🥉",
-            _ => "🔹",
-        };
-
-        let username = match UserId::new(user.user_id.parse::<u64>().unwrap_or_default())
-            .to_user(&ctx)
-            .await
-        {
-            Ok(user) => escape_markdown(&user.name),
-            Err(_) => "Unknown User".to_string(),
-        };
-
-        let guild_name = match user.guild_id.parse::<u64>() {
-            Ok(guild_id) => get_cached_guild_name(ctx, bot, guild_id).await,
-            Err(_) => "unknown server".to_string(),
-        };
-
+    let mut description = String::from("Here are the biggest dicks in the entire world:\n\n");
+    for (i, (row, name)) in top.iter().zip(&names).enumerate() {
         description.push_str(&format!(
-            "{} **{}. {}**: {} cm (from {})\n",
-            medal,
+            "{} **{}. {name}**: {} cm (from {})\n",
+            medal(i),
             i + 1,
-            username,
-            user.length,
-            guild_name
+            row.length,
+            guild_label(&cmd.ctx.cache, &row.guild_id)
         ));
     }
 
-    // Add funny comment about the global champion
-    if !top_users.is_empty() {
-        let winner_name = match UserId::new(top_users[0].user_id.parse::<u64>().unwrap_or_default())
-            .to_user(&ctx)
-            .await
-        {
-            Ok(user) => escape_markdown(&user.name),
-            Err(_) => "Unknown User".to_string(),
-        };
+    let champion = &names[0];
+    let comments = [
+        format!("NASA wants to study {champion}'s dick as a possible space elevator!"),
+        format!("{champion} must need a special permit to carry that thing around!"),
+        format!("{champion} is making the rest of the world feel inadequate!"),
+        format!("{champion} is the global champion..."),
+    ];
+    let comment = comments
+        .choose(&mut rand::rng())
+        .expect("comments are not empty");
+    description.push_str(&format!("\n{comment}"));
 
-        let comments = [
-            format!(
-                "NASA wants to study {}'s dick as a possible space elevator!",
-                winner_name
-            ),
-            format!(
-                "{} must need a special permit to carry that thing around!",
-                winner_name
-            ),
-            format!(
-                "{} is making the rest of the world feel inadequate!",
-                winner_name
-            ),
-            format!("{} is the global champion...", winner_name),
-        ];
-
-        // Select random comment
-        let winner_comment = comments.choose(&mut rand::rng()).unwrap();
-
-        description.push_str(&format!("\n\n{}", winner_comment));
-    }
-
-    command.create_followup(&ctx.http,
-        CreateInteractionResponseFollowup::new().add_embed(
-            CreateEmbed::new()
-                .title("🌍 Global Dick Leaderboard 🏆")
-                .description(description)
-                .color(0x9B59B6) // Purple
-                .footer(CreateEmbedFooter::new(
-                    format!(
-                        "🌐 {} servers | 🍆 {} total dicks | World domination starts with your dick. Start growing today with /grow!",
-                        server_count_str, dick_count_str
-                    )
-                )),
+    cmd.edit(
+        embed("🌍 Global Dick Leaderboard 🏆", description, colors::PURPLE).footer(
+            CreateEmbedFooter::new(format!(
+                "🌐 {} servers · 🍆 {total_dicks} dicks · World domination starts with /grow!",
+                cmd.ctx.cache.guild_count()
+            )),
         ),
-    ).await?;
-
-    Ok(())
+    )
+    .await
 }

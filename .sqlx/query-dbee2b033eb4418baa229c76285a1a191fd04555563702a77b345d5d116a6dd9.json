@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT length FROM dicks WHERE user_id = ? AND guild_id = ?",
+  "query": "UPDATE dicks\n         SET length = length - ?, pvp_losses = pvp_losses + 1, pvp_current_streak = 0,\n             cm_lost = cm_lost + ?\n         WHERE user_id = ? AND guild_id = ? AND length >= ?\n         RETURNING length",
   "describe": {
     "columns": [
       {
@@ -16,11 +16,11 @@
       }
     ],
     "parameters": {
-      "Right": 2
+      "Right": 5
     },
     "nullable": [
       false
     ]
   },
-  "hash": "7bfdfd02d16691587dad63ef1354e349d7f4af24065bd530fb0e413f0cf8f192"
+  "hash": "dbee2b033eb4418baa229c76285a1a191fd04555563702a77b345d5d116a6dd9"
 }

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO global_events (event_type, name, description, bonus_value, started_at, ends_at)\n         VALUES (?, ?, ?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": []
+  },
+  "hash": "b98b6465885300f7066c8e997b9f48c878e0aba2051ebafa1e005370b2e5110d"
+}

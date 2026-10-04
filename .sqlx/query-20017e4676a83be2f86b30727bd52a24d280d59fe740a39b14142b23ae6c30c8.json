@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE dicks SET daily_cooldown_skips = daily_cooldown_skips + 1\n                 WHERE user_id = ? AND guild_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "20017e4676a83be2f86b30727bd52a24d280d59fe740a39b14142b23ae6c30c8"
+}

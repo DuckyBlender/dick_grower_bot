@@ -1,0 +1,21 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT date(last_dotd) >= date('now') as \"awarded!: bool\"\n         FROM guild_settings WHERE guild_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "awarded!: bool",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "fe552c05c85abe658697bd0c0c0d99a1b9532eb836085090ba662d9f3a9d7d17"
+}

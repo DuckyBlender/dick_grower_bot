@@ -1,41 +1,52 @@
-use serenity::all::{
-    CommandInteraction, CreateEmbed, CreateEmbedFooter, CreateInteractionResponse,
-    CreateInteractionResponseMessage,
-};
-use serenity::prelude::*;
+use crate::commands::grow::DEFAULT_COOLDOWN_MINUTES;
+use crate::commands::{Cmd, CommandResult, viagra};
+use crate::utils::{colors, embed};
+use serenity::all::{CreateCommand, CreateEmbedFooter};
 
-pub async fn handle_help_command(
-    ctx: &Context,
-    command: &CommandInteraction,
-) -> Result<(), serenity::Error> {
-    let description = "\
-        `/grow` - Grow your dick once per 60 minutes (always positive growth now!)\n\
-        `/top` - View the server's dick leaderboard\n\
-        `/global` - View the global dick leaderboard\n\
-        `/pvp <bet>` - Challenge someone to a dick battle with a cm bet\n\
-        `/stats <user>` - View your or someone else's dick stats\n\
-        `/dickoftheday` - Select a random Dick of the Day\n\
-        `/gift <user> <amount>` - Gift some of your length to another user\n\
-        `/viagra` - Boost your growth by 20% for 6 hours (20 hour cooldown)\n\
-        `/daily` - Claim a once-a-day random perk\n\
-        `/event` - View the current global growth event\n\
-        `/help` - Show this help message\n\
-        \n\
-        **🔔 Bot Updates & Community:**\n\
-        Join our Discord for announcements and other projects: [Discord Server](https://discord.gg/39nqUzYGbe)\n\
-    ";
+pub fn register() -> CreateCommand {
+    CreateCommand::new("help").description("Show help information about the bot commands")
+}
 
-    let builder = CreateInteractionResponse::Message(
-        CreateInteractionResponseMessage::new().add_embed(
-            CreateEmbed::new()
-                .title("🍆 Dick Grower Bot Help")
-                .description(description)
-                .color(0x00FF00)
-                .footer(CreateEmbedFooter::new(
-                    "Compete with friends for the biggest dick in town!",
-                )),
-        ),
+pub async fn run(cmd: &Cmd<'_>) -> CommandResult {
+    let growing = format!(
+        "`/grow` - Grow your dick (every {DEFAULT_COOLDOWN_MINUTES} minutes)\n\
+         `/daily` - Claim a random perk once per UTC day\n\
+         `/viagra` - +{}% growth for {} hours ({} hour cooldown)\n\
+         `/event` - View the current global event",
+        viagra::BOOST_PERCENT,
+        viagra::DURATION_HOURS,
+        viagra::COOLDOWN_HOURS
     );
 
-    return command.create_response(&ctx.http, builder).await;
+    cmd.reply(
+        embed(
+            "🍆 Dick Grower Bot Help",
+            "Grow daily, keep your streak alive and battle your friends for the biggest dick in town!",
+            colors::SUCCESS,
+        )
+        .field("🌱 Growing", growing, false)
+        .field(
+            "⚔️ Competing",
+            "`/pvp <bet>` - Challenge anyone to a dick battle\n\
+             `/dickoftheday` - Crown a random active grower (once per day)\n\
+             `/gift <user> <amount>` - Give some of your length away",
+            false,
+        )
+        .field(
+            "📊 Info",
+            "`/stats [user]` - Your (or someone's) stats and perks\n\
+             `/top` - Server leaderboard\n\
+             `/global` - Global leaderboard",
+            false,
+        )
+        .field(
+            "🔔 Updates & Community",
+            "Join our Discord for announcements and other projects: [Discord Server](https://discord.gg/39nqUzYGbe)",
+            false,
+        )
+        .footer(CreateEmbedFooter::new(
+            "Compete with friends for the biggest dick in town!",
+        )),
+    )
+    .await
 }

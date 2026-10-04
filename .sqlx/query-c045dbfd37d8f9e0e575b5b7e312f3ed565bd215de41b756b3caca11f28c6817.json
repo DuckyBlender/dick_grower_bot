@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE dicks SET daily_streak_savers = daily_streak_savers + 1\n                 WHERE user_id = ? AND guild_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "c045dbfd37d8f9e0e575b5b7e312f3ed565bd215de41b756b3caca11f28c6817"
+}
