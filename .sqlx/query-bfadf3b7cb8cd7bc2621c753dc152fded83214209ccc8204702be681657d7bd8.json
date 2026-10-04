@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT OR IGNORE INTO guild_settings (guild_id, last_dotd)\n         VALUES (?, '1970-01-01 00:00:00')",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "bfadf3b7cb8cd7bc2621c753dc152fded83214209ccc8204702be681657d7bd8"
+}

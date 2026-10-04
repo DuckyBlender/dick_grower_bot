@@ -6,12 +6,24 @@
       {
         "name": "viagra_last_used",
         "ordinal": 0,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "dicks",
+            "name": "viagra_last_used"
+          }
+        }
       },
       {
         "name": "viagra_active_until",
         "ordinal": 1,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "dicks",
+            "name": "viagra_active_until"
+          }
+        }
       }
     ],
     "parameters": {

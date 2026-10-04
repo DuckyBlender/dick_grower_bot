@@ -1,0 +1,230 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT length, dick_of_day_count, last_grow, growth_count,\n                pvp_wins, pvp_losses, pvp_max_streak, pvp_current_streak, cm_won, cm_lost,\n                daily_streak, best_daily_streak, viagra_last_used, viagra_active_until,\n                daily_growth_boost_percent, daily_cooldown_skips, daily_streak_savers,\n                daily_lucky_rolls\n         FROM dicks\n         WHERE user_id = ? AND guild_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "length",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "dicks",
+            "name": "length"
+          }
+        }
+      },
+      {
+        "name": "dick_of_day_count",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "dicks",
+            "name": "dick_of_day_count"
+          }
+        }
+      },
+      {
+        "name": "last_grow",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "dicks",
+            "name": "last_grow"
+          }
+        }
+      },
+      {
+        "name": "growth_count",
+        "ordinal": 3,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "dicks",
+            "name": "growth_count"
+          }
+        }
+      },
+      {
+        "name": "pvp_wins",
+        "ordinal": 4,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "dicks",
+            "name": "pvp_wins"
+          }
+        }
+      },
+      {
+        "name": "pvp_losses",
+        "ordinal": 5,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "dicks",
+            "name": "pvp_losses"
+          }
+        }
+      },
+      {
+        "name": "pvp_max_streak",
+        "ordinal": 6,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "dicks",
+            "name": "pvp_max_streak"
+          }
+        }
+      },
+      {
+        "name": "pvp_current_streak",
+        "ordinal": 7,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "dicks",
+            "name": "pvp_current_streak"
+          }
+        }
+      },
+      {
+        "name": "cm_won",
+        "ordinal": 8,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "dicks",
+            "name": "cm_won"
+          }
+        }
+      },
+      {
+        "name": "cm_lost",
+        "ordinal": 9,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "dicks",
+            "name": "cm_lost"
+          }
+        }
+      },
+      {
+        "name": "daily_streak",
+        "ordinal": 10,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "dicks",
+            "name": "daily_streak"
+          }
+        }
+      },
+      {
+        "name": "best_daily_streak",
+        "ordinal": 11,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "dicks",
+            "name": "best_daily_streak"
+          }
+        }
+      },
+      {
+        "name": "viagra_last_used",
+        "ordinal": 12,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "dicks",
+            "name": "viagra_last_used"
+          }
+        }
+      },
+      {
+        "name": "viagra_active_until",
+        "ordinal": 13,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "dicks",
+            "name": "viagra_active_until"
+          }
+        }
+      },
+      {
+        "name": "daily_growth_boost_percent",
+        "ordinal": 14,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "dicks",
+            "name": "daily_growth_boost_percent"
+          }
+        }
+      },
+      {
+        "name": "daily_cooldown_skips",
+        "ordinal": 15,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "dicks",
+            "name": "daily_cooldown_skips"
+          }
+        }
+      },
+      {
+        "name": "daily_streak_savers",
+        "ordinal": 16,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "dicks",
+            "name": "daily_streak_savers"
+          }
+        }
+      },
+      {
+        "name": "daily_lucky_rolls",
+        "ordinal": 17,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "dicks",
+            "name": "daily_lucky_rolls"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "1f071434cb9948a9c7429c0e98cd62fc97ca0e33fa0dd679bd3d2eabf84c7c2a"
+}

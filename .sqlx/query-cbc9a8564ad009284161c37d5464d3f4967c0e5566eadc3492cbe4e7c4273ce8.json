@@ -1,0 +1,86 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id as \"id!\", event_type, name, description, bonus_value, ends_at\n         FROM global_events\n         WHERE ends_at > datetime('now')\n         ORDER BY ends_at DESC\n         LIMIT 1",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "global_events",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "event_type",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "global_events",
+            "name": "event_type"
+          }
+        }
+      },
+      {
+        "name": "name",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "global_events",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "name": "description",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "global_events",
+            "name": "description"
+          }
+        }
+      },
+      {
+        "name": "bonus_value",
+        "ordinal": 4,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "global_events",
+            "name": "bonus_value"
+          }
+        }
+      },
+      {
+        "name": "ends_at",
+        "ordinal": 5,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "global_events",
+            "name": "ends_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "cbc9a8564ad009284161c37d5464d3f4967c0e5566eadc3492cbe4e7c4273ce8"
+}

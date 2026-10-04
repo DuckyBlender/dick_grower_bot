@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT DISTINCT user_id, guild_id\n         FROM length_history\n         WHERE growth_type = ? AND timestamp >= ? AND timestamp < ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "user_id",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "length_history",
+            "name": "user_id"
+          }
+        }
+      },
+      {
+        "name": "guild_id",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "length_history",
+            "name": "guild_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "f7ce21ca9b8e737018f0f25da3ed135cbb52659964d9631d4403ce87f5ad8e76"
+}

@@ -1,148 +1,112 @@
-use crate::Bot;
-use crate::commands::escape_markdown;
-use log::error;
-use serenity::all::{
-    CommandInteraction, CreateEmbed, CreateEmbedFooter, CreateInteractionResponse,
-    CreateInteractionResponseMessage,
-};
-use serenity::model::id::UserId;
-use serenity::prelude::*;
+use crate::commands::{Cmd, CommandResult};
+use crate::db;
+use crate::utils::{colors, embed, escape_markdown, medal, ordinal};
+use serenity::all::{Context, CreateCommand, CreateEmbedFooter, UserId};
+use serenity::futures::future::join_all;
 
-pub async fn handle_top_command(
+pub fn register() -> CreateCommand {
+    CreateCommand::new("top")
+        .description("Show the top players with the biggest weapons in this server")
+}
+
+/// Looks up display names for stored user IDs concurrently.
+pub async fn display_names<'a>(
     ctx: &Context,
-    command: &CommandInteraction,
-) -> Result<(), serenity::Error> {
-    let data = ctx.data.read().await;
-    let bot = data.get::<Bot>().unwrap();
+    user_ids: impl IntoIterator<Item = &'a str>,
+) -> Vec<String> {
+    let lookups = user_ids.into_iter().map(|raw_id| async move {
+        let user = match raw_id.parse::<u64>() {
+            Ok(id) if id != 0 => UserId::new(id).to_user(ctx).await.ok(),
+            _ => None,
+        };
+        user.map_or_else(
+            || "Unknown User".to_string(),
+            |user| escape_markdown(user.display_name()),
+        )
+    });
+    join_all(lookups).await
+}
 
-    let guild_id = command.guild_id.unwrap().to_string();
+pub async fn run(cmd: &Cmd<'_>) -> CommandResult {
+    // Resolving names can take longer than Discord's 3 second response window.
+    cmd.defer().await?;
 
-    // Get top 10 users in this server with a single optimized query
-    let top_users = match sqlx::query!(
-        "SELECT user_id, length FROM dicks 
-         WHERE guild_id = ? 
-         ORDER BY length DESC, user_id ASC 
+    let top = sqlx::query!(
+        "SELECT user_id, length FROM dicks
+         WHERE guild_id = ?
+         ORDER BY length DESC, user_id ASC
          LIMIT 10",
-        guild_id
+        cmd.guild
     )
-    .fetch_all(&bot.database)
-    .await
-    {
-        Ok(users) => users,
-        Err(why) => {
-            error!("Error fetching top users: {:?}", why);
-            let builder = CreateInteractionResponse::Message(
-                CreateInteractionResponseMessage::new().add_embed(
-                    CreateEmbed::new()
-                        .title("⚠️ Leaderboard Error")
-                        .description(
-                            "Failed to measure all the dicks. Some were too small to find.",
-                        )
-                        .color(0xFF0000),
-                ),
-            );
-            return command.create_response(&ctx.http, builder).await;
-        }
+    .fetch_all(&cmd.bot.db)
+    .await?;
+
+    let Some(leader) = top.first() else {
+        return cmd
+            .edit(embed(
+                "👀 No Dicks Found",
+                "Nobody has grown their dick in this server yet. Be the first one!",
+                colors::NEUTRAL,
+            ))
+            .await;
     };
 
-    if top_users.is_empty() {
-        let builder = CreateInteractionResponse::Message(
-            CreateInteractionResponseMessage::new().add_embed(
-                CreateEmbed::new()
-                    .title("👀 No Dicks Found")
-                    .description(
-                        "Nobody has grown their dick in this server yet. Be the first one!",
-                    )
-                    .color(0xAAAAAA),
-            ),
-        );
-        return command.create_response(&ctx.http, builder).await;
-    }
-
-    // Build the leaderboard
-    let mut description = "Here are the biggest dicks in this server:\n\n".to_string();
-
-    for (i, user) in top_users.iter().enumerate() {
-        let medal = match i {
-            0 => "🥇",
-            1 => "🥈",
-            2 => "🥉",
-            _ => "🔹",
+    let names = display_names(cmd.ctx, top.iter().map(|row| row.user_id.as_str())).await;
+    let mut description = String::from("Here are the biggest dicks in this server:\n\n");
+    for (i, (row, name)) in top.iter().zip(&names).enumerate() {
+        let you = if row.user_id == cmd.user {
+            " ← you"
+        } else {
+            ""
         };
-
-        let username = match UserId::new(user.user_id.parse::<u64>().unwrap_or_default())
-            .to_user(&ctx)
-            .await
-        {
-            Ok(user) => escape_markdown(&user.name),
-            Err(_) => "Unknown User".to_string(),
-        };
-
         description.push_str(&format!(
-            "{} **{}. {}**: {} cm\n",
-            medal,
+            "{} **{}. {name}**: {} cm{you}\n",
+            medal(i),
             i + 1,
-            username,
-            user.length
+            row.length
         ));
     }
 
-    // Add funny comment about the winner
-    if !top_users.is_empty() {
-        let winner_name = match UserId::new(top_users[0].user_id.parse::<u64>().unwrap_or_default())
-            .to_user(&ctx)
-            .await
-        {
-            Ok(user) => escape_markdown(&user.name),
-            Err(_) => "Unknown User".to_string(),
-        };
-
-        let length = top_users[0].length;
-        let winner_comment = if length > 50 {
-            format!(
-                "Holy moly! {}' dick is so big it needs its own ZIP code!",
-                winner_name
-            )
-        } else if length > 30 {
-            format!(
-                "Beware of {} in tight spaces. That thing is a lethal weapon!",
-                winner_name
-            )
-        } else if length > 15 {
-            format!(
-                "{} is doing quite well. Impressive... most impressive.",
-                winner_name
-            )
-        } else if length > 0 {
-            format!(
-                "{} is trying their best, though. Gold star for effort!",
-                winner_name
-            )
-        } else {
-            format!(
-                "Poor {}... we need a microscope to find their dick.",
-                winner_name
-            )
-        };
-
-        description.push_str(&format!("\n\n{}", winner_comment));
+    if !top.iter().any(|row| row.user_id == cmd.user)
+        && let Some(length) = sqlx::query_scalar!(
+            "SELECT length FROM dicks WHERE user_id = ? AND guild_id = ?",
+            cmd.user,
+            cmd.guild
+        )
+        .fetch_optional(&cmd.bot.db)
+        .await?
+    {
+        let rank = db::guild_rank(&cmd.bot.db, &cmd.guild, length).await?;
+        description.push_str(&format!(
+            "⋯\n📍 **You: {}** with {length} cm\n",
+            ordinal(rank)
+        ));
     }
 
-    let guild_name = match command.guild_id.unwrap().to_partial_guild(&ctx).await {
-        Ok(guild) => escape_markdown(&guild.name),
-        Err(_) => "This Server".to_string(),
+    let leader_name = &names[0];
+    let comment = match leader.length {
+        51.. => format!("Holy moly! {leader_name}'s dick is so big it needs its own ZIP code!"),
+        31.. => format!("Beware of {leader_name} in tight spaces. That thing is a lethal weapon!"),
+        16.. => format!("{leader_name} is doing quite well. Impressive... most impressive."),
+        1.. => format!("{leader_name} is trying their best, though. Gold star for effort!"),
+        _ => format!("Poor {leader_name}... we need a microscope to find their dick."),
     };
+    description.push_str(&format!("\n{comment}"));
 
-    let builder = CreateInteractionResponse::Message(
-        CreateInteractionResponseMessage::new().add_embed(
-            CreateEmbed::new()
-                .title(format!("🍆 Dick Leaderboard: {} 🏆", guild_name))
-                .description(description)
-                .color(0x9B59B6) // Purple
-                .footer(CreateEmbedFooter::new(
-                    "Use /grow daily to increase your length!",
-                )),
-        ),
-    );
-    return command.create_response(&ctx.http, builder).await;
+    let guild_name = cmd
+        .guild_id
+        .name(&cmd.ctx.cache)
+        .map_or_else(|| "This Server".to_string(), |name| escape_markdown(&name));
+
+    cmd.edit(
+        embed(
+            format!("🍆 Dick Leaderboard: {guild_name} 🏆"),
+            description,
+            colors::PURPLE,
+        )
+        .footer(CreateEmbedFooter::new(
+            "Use /grow daily to increase your length!",
+        )),
+    )
+    .await
 }

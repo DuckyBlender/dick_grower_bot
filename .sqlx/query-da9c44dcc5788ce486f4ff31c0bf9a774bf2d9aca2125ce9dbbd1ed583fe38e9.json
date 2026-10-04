@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE dicks SET daily_growth_boost_percent = ? WHERE user_id = ? AND guild_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "da9c44dcc5788ce486f4ff31c0bf9a774bf2d9aca2125ce9dbbd1ed583fe38e9"
+}

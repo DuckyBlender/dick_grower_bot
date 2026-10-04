@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT user_id, length FROM dicks\n         WHERE guild_id = ?\n         ORDER BY length DESC, user_id ASC\n         LIMIT 10",
+  "describe": {
+    "columns": [
+      {
+        "name": "user_id",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "dicks",
+            "name": "user_id"
+          }
+        }
+      },
+      {
+        "name": "length",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "dicks",
+            "name": "length"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "fbabc53e76531cf8503cd087b4e117eddfd9a49ea86874412ff9a1d9bedfb3b6"
+}

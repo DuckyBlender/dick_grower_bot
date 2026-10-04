@@ -1,0 +1,50 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT daily_growth_boost_percent, daily_lucky_rolls, viagra_active_until\n         FROM dicks WHERE user_id = ? AND guild_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "daily_growth_boost_percent",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "dicks",
+            "name": "daily_growth_boost_percent"
+          }
+        }
+      },
+      {
+        "name": "daily_lucky_rolls",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "dicks",
+            "name": "daily_lucky_rolls"
+          }
+        }
+      },
+      {
+        "name": "viagra_active_until",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "dicks",
+            "name": "viagra_active_until"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "199af27f5e9750d598a553a5ca064ee438517683ae33a2e9cefdf2dcad75eb4f"
+}
