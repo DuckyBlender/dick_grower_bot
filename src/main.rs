@@ -1,296 +1,125 @@
-use chrono::Timelike;
-use commands::*;
-use fern::colors::{Color, ColoredLevelConfig};
-use log::{LevelFilter, error, info};
-use presence::update_presence;
-use serenity::all::{
-    CreateCommand, CreateEmbed, CreateEmbedFooter, CreateInteractionResponse,
-    CreateInteractionResponseMessage,
-};
-use serenity::async_trait;
-use serenity::builder::CreateCommandOption;
-use serenity::model::application::{CommandOptionType, Interaction};
-use serenity::model::gateway::Ready;
-use serenity::prelude::*;
-use sqlx::Row;
-use sqlx::SqlitePool;
-use sqlx::{Pool, Sqlite};
-use std::collections::HashMap;
-use std::env;
-use std::sync::Arc;
-use std::time::Duration as StdDuration;
-use tokio::sync::RwLock;
-use tokio::time::Instant;
 mod commands;
-mod presence;
+mod db;
 mod time;
 mod utils;
 
-struct Handler;
-
-impl TypeMapKey for Bot {
-    type Value = Arc<Bot>;
-}
-
-// Guild name cache duration in seconds
-const GUILD_NAME_CACHE_DURATION: u64 = 60 * 60 * 12; // 12 hours
-
-#[derive(Clone)]
-pub struct GuildNameCache {
-    pub name: String,
-    pub cached_at: u64,
-}
+use commands::pvp::{self, PvpChallenge};
+use commands::{Cmd, events};
+use fern::colors::{Color, ColoredLevelConfig};
+use log::{LevelFilter, error, info};
+use serenity::all::{
+    CommandInteraction, Context, CreateInteractionResponse, CreateInteractionResponseFollowup,
+    CreateInteractionResponseMessage, EventHandler, GatewayIntents, Interaction, Ready,
+};
+use serenity::{Client, async_trait};
+use sqlx::SqlitePool;
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Instant;
+use tokio::sync::RwLock;
+use utils::error_embed;
 
 pub struct Bot {
-    pub database: Pool<Sqlite>,
-    pub pvp_challenges: RwLock<HashMap<String, PvpChallenge>>,
-    pub guild_name_cache: RwLock<HashMap<u64, GuildNameCache>>,
+    pub db: SqlitePool,
+    /// Open PvP challenges keyed by the ID of the interaction that created them.
+    pub pvp_challenges: RwLock<HashMap<u64, PvpChallenge>>,
 }
 
-async fn table_exists(database: &Pool<Sqlite>, table_name: &str) -> Result<bool, sqlx::Error> {
-    let exists = sqlx::query_scalar::<_, i64>(
-        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?)",
-    )
-    .bind(table_name)
-    .fetch_one(database)
-    .await?;
-
-    Ok(exists == 1)
+struct Handler {
+    bot: Arc<Bot>,
+    /// `ready` fires again after every reconnect; background tasks must only start once.
+    started: AtomicBool,
 }
 
-async fn column_exists(
-    database: &Pool<Sqlite>,
-    table_name: &str,
-    column_name: &str,
-) -> Result<bool, sqlx::Error> {
-    let pragma = format!("PRAGMA table_info({table_name})");
-    let rows = sqlx::query(&pragma).fetch_all(database).await?;
+impl Handler {
+    async fn handle_command(&self, ctx: &Context, command: &CommandInteraction) {
+        let Some(guild_id) = command.guild_id else {
+            // Commands are registered as guild-only; this only triggers for stale clients.
+            let response = CreateInteractionResponseMessage::new()
+                .embed(error_embed(
+                    "⚠️ Server Only Bot",
+                    "This bot can only be used in a server, not in direct messages.",
+                ))
+                .ephemeral(true);
+            if let Err(why) = command
+                .create_response(&ctx.http, CreateInteractionResponse::Message(response))
+                .await
+            {
+                error!("Cannot respond to DM command: {why}");
+            }
+            return;
+        };
 
-    Ok(rows
-        .iter()
-        .any(|row| row.get::<String, _>("name") == column_name))
-}
+        info!(
+            "Command invoked: /{} by {} (ID: {}) in guild {}",
+            command.data.name, command.user.name, command.user.id, guild_id
+        );
+        let started = Instant::now();
+        let cmd = Cmd {
+            ctx,
+            bot: &self.bot,
+            interaction: command,
+            guild_id,
+            user: command.user.id.to_string(),
+            guild: guild_id.to_string(),
+        };
 
-async fn add_column_if_missing(
-    database: &Pool<Sqlite>,
-    table_name: &str,
-    column_name: &str,
-    column_definition: &str,
-) -> Result<(), sqlx::Error> {
-    if !column_exists(database, table_name, column_name).await? {
-        let query = format!("ALTER TABLE {table_name} ADD COLUMN {column_definition}");
-        sqlx::query(&query).execute(database).await?;
+        if let Err(why) = commands::dispatch(&cmd).await {
+            error!("Error executing /{}: {why}", command.data.name);
+            let embed = error_embed(
+                "⚠️ Something Went Wrong",
+                "The measuring tape broke. Please try again in a moment.",
+            );
+            let response = CreateInteractionResponseMessage::new()
+                .embed(embed.clone())
+                .ephemeral(true);
+            // If the command already responded (or deferred), fall back to a follow-up.
+            if command
+                .create_response(&ctx.http, CreateInteractionResponse::Message(response))
+                .await
+                .is_err()
+            {
+                let followup = CreateInteractionResponseFollowup::new()
+                    .embed(embed)
+                    .ephemeral(true);
+                if let Err(why) = command.create_followup(&ctx.http, followup).await {
+                    error!("Cannot report command error to user: {why}");
+                }
+            }
+        }
+
+        info!(
+            "Command /{} executed in {} ms",
+            command.data.name,
+            started.elapsed().as_millis()
+        );
     }
-
-    Ok(())
-}
-
-async fn ensure_current_schema(database: &Pool<Sqlite>) -> Result<(), sqlx::Error> {
-    if table_exists(database, "dicks").await? {
-        add_column_if_missing(
-            database,
-            "dicks",
-            "daily_last_claimed",
-            "daily_last_claimed TEXT DEFAULT NULL",
-        )
-        .await?;
-        add_column_if_missing(
-            database,
-            "dicks",
-            "daily_growth_boost_percent",
-            "daily_growth_boost_percent INTEGER NOT NULL DEFAULT 0",
-        )
-        .await?;
-        add_column_if_missing(
-            database,
-            "dicks",
-            "daily_cooldown_skips",
-            "daily_cooldown_skips INTEGER NOT NULL DEFAULT 0",
-        )
-        .await?;
-        add_column_if_missing(
-            database,
-            "dicks",
-            "daily_streak_savers",
-            "daily_streak_savers INTEGER NOT NULL DEFAULT 0",
-        )
-        .await?;
-        add_column_if_missing(
-            database,
-            "dicks",
-            "daily_lucky_rolls",
-            "daily_lucky_rolls INTEGER NOT NULL DEFAULT 0",
-        )
-        .await?;
-        add_column_if_missing(
-            database,
-            "dicks",
-            "daily_streak",
-            "daily_streak INTEGER NOT NULL DEFAULT 0",
-        )
-        .await?;
-        add_column_if_missing(
-            database,
-            "dicks",
-            "best_daily_streak",
-            "best_daily_streak INTEGER NOT NULL DEFAULT 0",
-        )
-        .await?;
-        add_column_if_missing(
-            database,
-            "dicks",
-            "last_streak_date",
-            "last_streak_date TEXT DEFAULT NULL",
-        )
-        .await?;
-        add_column_if_missing(
-            database,
-            "dicks",
-            "streak_last_claimed",
-            "streak_last_claimed TEXT DEFAULT NULL",
-        )
-        .await?;
-    }
-
-    sqlx::query(
-        "CREATE TABLE IF NOT EXISTS global_events (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            event_type TEXT NOT NULL,
-            name TEXT NOT NULL,
-            description TEXT NOT NULL,
-            bonus_value INTEGER NOT NULL,
-            pot_amount INTEGER NOT NULL DEFAULT 0,
-            resolved_at TEXT DEFAULT NULL,
-            started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            ends_at TEXT NOT NULL
-        )",
-    )
-    .execute(database)
-    .await?;
-
-    add_column_if_missing(
-        database,
-        "global_events",
-        "pot_amount",
-        "pot_amount INTEGER NOT NULL DEFAULT 0",
-    )
-    .await?;
-    add_column_if_missing(
-        database,
-        "global_events",
-        "resolved_at",
-        "resolved_at TEXT DEFAULT NULL",
-    )
-    .await?;
-
-    sqlx::query("CREATE INDEX IF NOT EXISTS idx_global_events_ends_at ON global_events(ends_at)")
-        .execute(database)
-        .await?;
-
-    Ok(())
 }
 
 #[async_trait]
 impl EventHandler for Handler {
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
         match interaction {
-            Interaction::Command(command) => {
-                // Log command invocation
-
-                if command.guild_id.is_none() {
-                    // Return message notifying that the bot is only available in guilds
-                    info!(
-                        "Command invoked in DM: /{} by {} (ID: {})",
-                        command.data.name, command.user.name, command.user.id
+            Interaction::Command(command) => self.handle_command(&ctx, &command).await,
+            Interaction::Component(component) => {
+                info!(
+                    "Component interaction: {} by {}",
+                    component.data.custom_id, component.user.id
+                );
+                if let Err(why) = pvp::handle_component(&ctx, &self.bot, &component).await {
+                    error!(
+                        "Error handling component {}: {why}",
+                        component.data.custom_id
                     );
-                    // Respond with an ephemeral message
-                    if let Err(why) = command.create_response(&ctx.http,
-                        CreateInteractionResponse::Message(
-                            CreateInteractionResponseMessage::new()
-                            .add_embed(
-                                CreateEmbed::new()
-                                .title("⚠️ Server Only Bot")
-                                .description("This bot can only be used in a server, not in direct messages.")
-                                .color(0xFF5733)
-                                .footer(CreateEmbedFooter::new(
-                                    "Please use this bot in a server where it is invited and begin your cucumber journey!",
-                                ))
-                            )
-                            .ephemeral(true)
-                        )
-                    ).await {
-                        error!("Cannot respond to slash command for guild check: {}", why);
-                    }
-                    return;
-                }
-
-                info!(
-                    "Command invoked: /{} by {} (ID: {}) in guild {}",
-                    command.data.name,
-                    command.user.name,
-                    command.user.id,
-                    command.guild_id.unwrap_or_default()
-                );
-
-                // Execute the command directly
-                let now = Instant::now();
-                let result = match command.data.name.as_str() {
-                    "grow" => handle_grow_command(&ctx, &command).await,
-                    "top" => handle_top_command(&ctx, &command).await,
-                    "global" => handle_global_command(&ctx, &command).await,
-                    "pvp" => handle_pvp_command(&ctx, &command).await,
-                    "stats" => handle_stats_command(&ctx, &command).await,
-                    "dickoftheday" => handle_dotd_command(&ctx, &command).await,
-                    "help" => handle_help_command(&ctx, &command).await,
-                    "gift" => handle_gift_command(&ctx, &command).await,
-                    "viagra" => handle_viagra_command(&ctx, &command).await,
-                    "daily" => handle_daily_command(&ctx, &command).await,
-                    "event" => handle_event_command(&ctx, &command).await,
-                    _ => {
-                        // For unimplemented commands, respond directly here
-                        command
-                            .create_response(
-                                &ctx.http,
-                                CreateInteractionResponse::Message(
-                                    CreateInteractionResponseMessage::new()
-                                        .content("Not implemented")
-                                        .ephemeral(true),
-                                ),
-                            )
-                            .await
-                    }
-                };
-
-                if let Err(why) = result {
-                    error!("Error executing command {}: {}", command.data.name, why);
-                }
-
-                let elapsed = now.elapsed();
-                info!(
-                    "Command /{} executed in {} ms",
-                    command.data.name,
-                    elapsed.as_millis()
-                );
-            }
-            Interaction::Component(component)
-                if component.data.custom_id.starts_with("pvp_accept:") =>
-            {
-                // Handle button interactions
-                info!("Component interaction: {}", component.data.custom_id);
-                if let Err(why) = handle_pvp_accept(&ctx, &component).await {
-                    error!("Error handling PVP accept: {}", why);
-                    if let Err(e) = component
-                        .create_response(
-                            &ctx.http,
-                            CreateInteractionResponse::Message(
-                                CreateInteractionResponseMessage::new()
-                                    .content("Something went wrong processing your request")
-                                    .ephemeral(true),
-                            ),
-                        )
+                    let response = CreateInteractionResponseMessage::new()
+                        .content("Something went wrong processing your request")
+                        .ephemeral(true);
+                    if let Err(why) = component
+                        .create_response(&ctx.http, CreateInteractionResponse::Message(response))
                         .await
                     {
-                        error!("Error responding to component interaction: {}", e);
+                        error!("Error responding to component interaction: {why}");
                     }
                 }
             }
@@ -300,112 +129,26 @@ impl EventHandler for Handler {
 
     async fn ready(&self, ctx: Context, ready: Ready) {
         info!("{} is connected!", ready.user.name);
+        events::update_presence(&ctx, &self.bot).await;
 
-        // Start a task to periodically update the presence
-        let ctx_clone = ctx.clone();
-        tokio::spawn(async move {
-            let mut interval = tokio::time::interval(StdDuration::from_secs(300)); // Update every 5 minutes
+        if self.started.swap(true, Ordering::SeqCst) {
+            return;
+        }
 
-            loop {
-                // Wait for the next interval
-                interval.tick().await;
+        tokio::spawn(events::run_scheduler(ctx.clone(), Arc::clone(&self.bot)));
 
-                // Update presence
-                update_presence(&ctx_clone).await;
-            }
-        });
-
-        // Start a task to automatically rotate global events every 4 hours on UTC boundaries
-        let ctx_clone = ctx.clone();
-        tokio::spawn(async move {
-            let now = chrono::Utc::now();
-            let seconds_into_period =
-                (now.hour() % 4) as u64 * 3600 + now.minute() as u64 * 60 + now.second() as u64;
-            let seconds_until_next = 4 * 3600 - seconds_into_period;
-
-            tokio::time::sleep(StdDuration::from_secs(seconds_until_next)).await;
-            let mut interval = tokio::time::interval(StdDuration::from_secs(4 * 3600));
-
-            loop {
-                interval.tick().await;
-
-                let data = ctx_clone.data.read().await;
-                let bot = data.get::<Bot>().unwrap().clone();
-                drop(data);
-
-                let messages = tick_event_system(&bot).await;
-                for msg in messages {
-                    info!("Event system: {}", msg);
-                }
-            }
-        });
-
-        // Register commands globally
-        let commands = vec![
-            CreateCommand::new("grow").description("Grow your cucumber"),
-            CreateCommand::new("top")
-                .description("Show the top players with the biggest weapons in this server"),
-            CreateCommand::new("global")
-                .description("Show the top players with the biggest weapons across all servers"),
-            CreateCommand::new("pvp")
-                .description("Start a dick battle")
-                .add_option(
-                    CreateCommandOption::new(
-                        CommandOptionType::Integer,
-                        "bet",
-                        "The amount of cm you want to bet",
-                    )
-                    .required(true)
-                    .min_int_value(1),
-                ),
-            CreateCommand::new("stats")
-                .description("View your or another user's stats")
-                .add_option(
-                    CreateCommandOption::new(
-                        CommandOptionType::User,
-                        "user",
-                        "The user whose stats you want to view",
-                    )
-                    .required(false),
-                ),
-            CreateCommand::new("dickoftheday").description("Randomly select a Dick of the Day"),
-            CreateCommand::new("help").description("Show help information about the bot commands"),
-            CreateCommand::new("gift")
-                .description("Gift some of your length to another user")
-                .add_option(
-                    CreateCommandOption::new(
-                        CommandOptionType::User,
-                        "user",
-                        "The user you want to gift length to",
-                    )
-                    .required(true),
-                )
-                .add_option(
-                    CreateCommandOption::new(
-                        CommandOptionType::Integer,
-                        "amount",
-                        "The amount of cm you want to gift",
-                    )
-                    .required(true)
-                    .min_int_value(1),
-                ),
-            CreateCommand::new("viagra")
-                .description("Boost your growth by 20% for 6 hours (20 hour cooldown)"),
-            CreateCommand::new("daily").description("Claim a once-a-day random perk"),
-            CreateCommand::new("event")
-                .description("View the current global growth event"),
-        ];
-
-        if let Err(why) = ctx.http.create_global_commands(&commands).await {
-            error!("Error creating global commands: {}", why);
+        if let Err(why) = ctx
+            .http
+            .create_global_commands(&commands::definitions())
+            .await
+        {
+            error!("Error creating global commands: {why}");
         }
     }
 }
 
-#[tokio::main]
-async fn main() {
-    // Initialize logger
-    let colors_line = ColoredLevelConfig::new()
+fn init_logger() {
+    let colors = ColoredLevelConfig::new()
         .error(Color::Red)
         .warn(Color::Yellow)
         .info(Color::Green)
@@ -417,7 +160,7 @@ async fn main() {
             out.finish(format_args!(
                 "[{} {} {}] {}",
                 chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
-                colors_line.color(record.level()),
+                colors.color(record.level()),
                 record.target(),
                 message
             ))
@@ -427,40 +170,37 @@ async fn main() {
         .chain(std::io::stdout())
         .apply()
         .expect("Failed to initialize logger");
+}
 
-    // Load environment variables
-    dotenv::dotenv().ok();
-    let token = env::var("DISCORD_TOKEN").expect("Expected a discord token in the environment");
+#[tokio::main]
+async fn main() {
+    init_logger();
+    dotenvy::dotenv().ok();
 
-    // Connect to the database using a connection pool
-    let database = SqlitePool::connect(&env::var("DATABASE_URL").unwrap())
+    let token = std::env::var("DISCORD_TOKEN").expect("DISCORD_TOKEN must be set");
+    let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+
+    let db = SqlitePool::connect(&database_url)
         .await
-        .expect("Coudn't connect to the sqlite database");
-
-    ensure_current_schema(&database)
+        .expect("Couldn't connect to the SQLite database");
+    db::ensure_schema(&db)
         .await
         .expect("Failed to ensure current database schema");
 
-    // Initialize the bot
-    let intents = GatewayIntents::GUILDS;
-    let bot_data = Arc::new(Bot {
-        database,
-        pvp_challenges: RwLock::new(HashMap::new()),
-        guild_name_cache: RwLock::new(HashMap::new()),
-    });
+    let handler = Handler {
+        bot: Arc::new(Bot {
+            db,
+            pvp_challenges: RwLock::new(HashMap::new()),
+        }),
+        started: AtomicBool::new(false),
+    };
 
-    let mut client = Client::builder(token, intents)
-        .event_handler(Handler)
+    let mut client = Client::builder(token, GatewayIntents::GUILDS)
+        .event_handler(handler)
         .await
         .expect("Error creating client");
 
-    {
-        let mut data = client.data.write().await;
-        data.insert::<Bot>(bot_data);
-    }
-
-    // Start the bot
     if let Err(why) = client.start().await {
-        error!("An error occurred while running the client: {:?}", why);
+        error!("An error occurred while running the client: {why:?}");
     }
 }

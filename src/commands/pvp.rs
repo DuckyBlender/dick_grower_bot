@@ -1,723 +1,492 @@
 use crate::Bot;
-use crate::escape_markdown;
+use crate::commands::{Cmd, CommandResult};
+use crate::db::{self, History};
+use crate::time;
+use crate::utils::{colors, embed};
 use chrono::Duration;
-use log::{error, info};
 use rand::RngExt;
 use serenity::all::{
-    ButtonStyle, CommandInteraction, CreateActionRow, CreateButton, CreateEmbed, CreateEmbedFooter,
-    CreateInteractionResponse, CreateInteractionResponseMessage, Mentionable,
+    ButtonStyle, CommandOptionType, ComponentInteraction, Context, CreateActionRow, CreateButton,
+    CreateCommand, CreateCommandOption, CreateEmbed, CreateEmbedFooter, CreateInteractionResponse,
+    CreateInteractionResponseMessage, GuildId, Mention, Mentionable, UserId,
 };
-use serenity::model::id::UserId;
-use serenity::prelude::*;
-use std::cmp::Ordering;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::Instant;
+
+const CHALLENGE_TTL_HOURS: i64 = 24;
+pub const ACCEPT_PREFIX: &str = "pvp_accept:";
+pub const CANCEL_PREFIX: &str = "pvp_cancel:";
 
 pub struct PvpChallenge {
+    challenger: UserId,
+    guild_id: GuildId,
     bet: i64,
-    created_at: u64,
-    guild_id: u64,
+    created_at: Instant,
 }
 
-pub async fn handle_pvp_command(
-    ctx: &Context,
-    command: &CommandInteraction,
-) -> Result<(), serenity::Error> {
-    let data = ctx.data.read().await;
-    let bot = data.get::<Bot>().unwrap();
-
-    let options = &command.data.options;
-    let bet = options[0].value.as_i64().unwrap();
-
-    let challenger_id = command.user.id;
-    let guild_id = command.guild_id.unwrap();
-
-    // Validate bet
-    if bet <= 0 {
-        let builder = CreateInteractionResponse::Message(
-            CreateInteractionResponseMessage::new()
-                .add_embed(
-                    CreateEmbed::new()
-                        .title("❌ Invalid Bet")
-                        .description("You need to bet at least 1 cm! Don't be so stingy with your centimeters.")
-                        .color(0xFF0000),
-                )
-                .ephemeral(true),
-        );
-        return command.create_response(&ctx.http, builder).await;
+impl PvpChallenge {
+    fn is_expired(&self) -> bool {
+        self.created_at.elapsed().as_secs() >= (CHALLENGE_TTL_HOURS * 3600) as u64
     }
+}
 
-    // Check if challenger has enough length
-    let challenger_id_str = challenger_id.to_string();
-    let guild_id_str = guild_id.to_string();
-    let challenger_length = match sqlx::query!(
-        "SELECT length FROM dicks WHERE user_id = ? AND guild_id = ?",
-        challenger_id_str,
-        guild_id_str
-    )
-    .fetch_optional(&bot.database)
-    .await
-    {
-        Ok(Some(record)) => record.length,
-        Ok(None) => {
-            // Create new user
-            info!(
-                "New user detected, adding user {} ({}) in guild id {} to database",
-                command.user.name, challenger_id, guild_id
-            );
-            match sqlx::query!(
-                "INSERT INTO dicks (user_id, guild_id, length, last_grow, dick_of_day_count, 
-                                   pvp_wins, pvp_losses, pvp_max_streak, pvp_current_streak,
-                                   cm_won, cm_lost)
-                 VALUES (?, ?, 0, datetime('now', '-2 days'), 0, 0, 0, 0, 0, 0, 0)",
-                challenger_id_str,
-                guild_id_str
+enum Claim {
+    Missing,
+    OwnChallenge,
+    NotYours,
+    Claimed(PvpChallenge),
+}
+
+pub fn register() -> CreateCommand {
+    CreateCommand::new("pvp")
+        .description("Start a dick battle")
+        .add_option(
+            CreateCommandOption::new(
+                CommandOptionType::Integer,
+                "bet",
+                "The amount of cm you want to bet",
             )
-            .execute(&bot.database)
-            .await
-            {
-                Ok(_) => 0,
-                Err(why) => {
-                    error!("Error creating user: {:?}", why);
-                    0
-                }
-            }
-        }
-        Err(why) => {
-            error!("Database error: {:?}", why);
-            let builder = CreateInteractionResponse::Message(
-                CreateInteractionResponseMessage::new()
-                    .add_embed(
-                        CreateEmbed::new()
-                            .title("⚠️ Database Error")
-                            .description("Failed to check your length. The measuring tape broke.")
-                            .color(0xFF0000),
-                    )
-                    .ephemeral(true),
-            );
-            return command.create_response(&ctx.http, builder).await;
-        }
-    };
+            .required(true)
+            .min_int_value(1),
+        )
+}
 
-    if challenger_length < bet {
-        let builder = CreateInteractionResponse::Message(
-            CreateInteractionResponseMessage::new()
-                .add_embed(
-                    CreateEmbed::new()
-                        .title("❌ Insufficient Length")
-                        .description(format!(
-                            "You only have **{} cm** but you're trying to bet **{} cm**!\n\nYou can't bet what you don't have, buddy. Your ambition outweighs your equipment.",
-                            challenger_length, bet
-                        ))
-                        .color(0xFF0000),
-                )
-                .ephemeral(true),
+pub async fn run(cmd: &Cmd<'_>) -> CommandResult {
+    let bet = cmd
+        .interaction
+        .data
+        .options
+        .first()
+        .and_then(|option| option.value.as_i64())
+        .unwrap_or_default();
+    if bet < 1 {
+        return cmd
+            .reply_ephemeral(embed(
+                "❌ Invalid Bet",
+                "You need to bet at least 1 cm! Don't be so stingy with your centimeters.",
+                colors::ERROR,
+            ))
+            .await;
+    }
+
+    db::ensure_user(&cmd.bot.db, &cmd.user, &cmd.guild).await?;
+    let length = db::length(&cmd.bot.db, &cmd.user, &cmd.guild).await?;
+    if length < bet {
+        return cmd
+            .reply_ephemeral(embed(
+                "❌ Insufficient Length",
+                format!(
+                    "You only have **{length} cm** but you're trying to bet **{bet} cm**!\n\nYou can't bet what you don't have, buddy. Your ambition outweighs your equipment."
+                ),
+                colors::ERROR,
+            ))
+            .await;
+    }
+
+    let challenger = cmd.interaction.user.id;
+    let challenge_id = cmd.interaction.id.get();
+    {
+        // One open challenge per user: a new one replaces the old one, whose buttons stop working.
+        let mut challenges = cmd.bot.pvp_challenges.write().await;
+        challenges
+            .retain(|_, challenge| challenge.challenger != challenger && !challenge.is_expired());
+        challenges.insert(
+            challenge_id,
+            PvpChallenge {
+                challenger,
+                guild_id: cmd.guild_id,
+                bet,
+                created_at: Instant::now(),
+            },
         );
-        return command.create_response(&ctx.http, builder).await;
     }
 
-    // Create PVP challenge
-    let challenge_id = format!("ch:{}", challenger_id);
-    let current_time = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
-
-    let mut pvp_challenges = bot.pvp_challenges.write().await;
-    pvp_challenges.insert(
-        challenge_id.clone(),
-        PvpChallenge {
-            bet,
-            created_at: current_time,
-            guild_id: guild_id.get(),
-        },
-    );
-
-    // Get challenger mention (always mention, don't use username)
-    let challenger_mention = challenger_id.mention();
-
-    // Create accept button
-    let accept_button = CreateButton::new(format!("pvp_accept:{}", challenger_id))
-        .label("Accept Challenge")
-        .style(ButtonStyle::Success)
-        .emoji('🔥');
-
-    let components = vec![CreateActionRow::Buttons(vec![accept_button])];
-
-    // Create bet description based on size
-    let bet_description = if bet >= 50 {
-        "**HOLY MOLY!** This is a high-stakes dick measuring contest!"
-    } else if bet >= 25 {
-        "That's quite a sizeable wager! Someone's feeling confident!"
-    } else if bet >= 10 {
-        "A decent bet! More than a day's growth on the line."
-    } else if bet >= 5 {
-        "A reasonable bet for a friendly competition."
-    } else {
-        "A cautious bet. Not everyone's ready to risk their precious centimeters!"
+    let flavor = match bet {
+        100.. => "🤯 **LEGENDARY BET!** This is a high-stakes dick measuring contest!",
+        50.. => "💰 **MASSIVE BET!** This is a high-stakes dick measuring contest!",
+        25.. => "💰 That's quite a sizeable wager! Someone's feeling confident!",
+        10.. => "A decent bet! More than a day's growth on the line.",
+        5.. => "A reasonable bet for a friendly competition.",
+        _ => "A cautious bet. Not everyone's ready to risk their precious centimeters!",
     };
+    let expires = time::now() + Duration::hours(CHALLENGE_TTL_HOURS);
+    let buttons = CreateActionRow::Buttons(vec![
+        CreateButton::new(format!("{ACCEPT_PREFIX}{challenge_id}"))
+            .label("Accept Challenge")
+            .style(ButtonStyle::Success)
+            .emoji('🔥'),
+        CreateButton::new(format!("{CANCEL_PREFIX}{challenge_id}"))
+            .label("Cancel")
+            .style(ButtonStyle::Secondary),
+    ]);
 
-    // Compose bet_comment as the first line of the description
-    let bet_comment = if bet >= 100 {
-        format!("🤯 **LEGENDARY BET!** {} cm", bet)
-    } else if bet >= 50 {
-        format!("💰 **MASSIVE BET!** {} cm", bet)
-    } else if bet >= 30 {
-        format!("💰 A **huge {} cm bet**!", bet)
-    } else if bet >= 15 {
-        format!("💰 A solid **{} cm bet**", bet)
-    } else {
-        String::new() // No special comment for smaller bets
-    };
-
-    // Build the embed description
-    let mut description = String::new();
-    if !bet_comment.is_empty() {
-        description.push_str(&format!("{}\n\n", bet_comment));
-    }
-    description.push_str(&format!(
-        "{} has started a dick battle!\n\nBet amount: **{} cm**\n\n{}",
-        challenger_mention, bet, bet_description
-    ));
-
-    let builder = CreateInteractionResponse::Message(
+    cmd.respond(
         CreateInteractionResponseMessage::new()
-            .add_embed(
-                CreateEmbed::new()
-                    .title("🥊 Dick Battle!")
-                    .description(description)
-                    .color(0x3498DB) // Blue
-                    .footer(CreateEmbedFooter::new(
-                        "Anyone can accept this challenge by clicking the button below. May the strongest dong win!"
-                    )),
+            .embed(
+                embed(
+                    "🥊 Dick Battle!",
+                    format!(
+                        "{} has started a dick battle!\n\nBet: **{bet} cm**\n{flavor}\n\nExpires {}",
+                        challenger.mention(),
+                        time::relative(expires)
+                    ),
+                    colors::INFO,
+                )
+                .footer(CreateEmbedFooter::new(
+                    "Anyone can accept this challenge. Both players roll 1-100, highest roll takes the bet!",
+                )),
             )
-            .components(components),
-    );
-    return command.create_response(&ctx.http, builder).await;
+            .components(vec![buttons]),
+    )
+    .await
 }
 
-pub async fn handle_pvp_accept(
+pub async fn handle_component(
     ctx: &Context,
-    component: &serenity::model::application::ComponentInteraction,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let data = ctx.data.read().await;
-    let bot = data.get::<Bot>().unwrap();
-
-    let custom_id = &component.data.custom_id;
-    let challenger_id_str = custom_id.split(':').nth(1).unwrap_or_default();
-    let challenger_id = UserId::new(challenger_id_str.parse::<u64>().unwrap_or_default());
-    let challenged_id = component.user.id;
-
-    // Check if user is trying to accept their own challenge
-    if challenger_id == challenged_id {
-        component
-            .create_response(
-                &ctx.http,
-                CreateInteractionResponse::Message(
-                    CreateInteractionResponseMessage::new()
-                        .add_embed(
-                            CreateEmbed::new()
-                                .title("🤨 Self-Challenge Detected")
-                                .description(
-                                    "You can't accept your own challenge! That would be... weird.",
-                                )
-                                .color(0xFF9900),
-                        )
-                        .ephemeral(true),
-                ),
-            )
-            .await?;
+    bot: &Bot,
+    component: &ComponentInteraction,
+) -> CommandResult {
+    let custom_id = component.data.custom_id.as_str();
+    let (accept, raw_id) = if let Some(id) = custom_id.strip_prefix(ACCEPT_PREFIX) {
+        (true, id)
+    } else if let Some(id) = custom_id.strip_prefix(CANCEL_PREFIX) {
+        (false, id)
+    } else {
         return Ok(());
-    }
+    };
+    let challenge_id = raw_id.parse::<u64>().unwrap_or_default();
+    let user = component.user.id;
 
-    // Get the challenge
-    let mut pvp_challenges = bot.pvp_challenges.write().await;
-
-    let challenge_id = format!("ch:{}", challenger_id);
-    let challenge = match pvp_challenges.get(&challenge_id) {
-        Some(c) => c,
-        None => {
-            component.create_response(
-                &ctx.http,
-                CreateInteractionResponse::Message(
-                    CreateInteractionResponseMessage::new()
-                        .add_embed(
-                            CreateEmbed::new()
-                                .title("❓ No Active Challenge")
-                                .description("This challenge no longer exists. It might have expired or been accepted by someone else.")
-                                .color(0xAAAAAA),
-                        )
-                        .ephemeral(true),
-                ),
-            ).await?;
-            return Ok(());
+    let claim = {
+        let mut challenges = bot.pvp_challenges.write().await;
+        match challenges.get(&challenge_id) {
+            None => Claim::Missing,
+            Some(challenge) if accept && challenge.challenger == user => Claim::OwnChallenge,
+            Some(challenge) if !accept && challenge.challenger != user => Claim::NotYours,
+            Some(_) => Claim::Claimed(
+                challenges
+                    .remove(&challenge_id)
+                    .expect("challenge is present"),
+            ),
         }
     };
 
-    // Check if challenge is expired (1 hour)
-    let current_time = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
-
-    if current_time - challenge.created_at > Duration::hours(24).num_seconds() as u64 {
-        info!("Challenge expired: {}", challenge_id);
-
-        // Remove expired challenge
-        pvp_challenges.remove(&challenge_id);
-
-        component
-            .create_response(
-                &ctx.http,
-                CreateInteractionResponse::Message(
-                    CreateInteractionResponseMessage::new()
-                        .add_embed(
-                            CreateEmbed::new()
-                                .title("⏰ Challenge Expired")
-                                .description(
-                                    "This challenge has expired after 24h. You took too long to accept!",
-                                )
-                                .color(0xAAAAAA),
-                        )
-                        .ephemeral(true),
+    let challenge = match claim {
+        Claim::Missing => {
+            return reply_ephemeral(
+                ctx,
+                component,
+                embed(
+                    "❓ No Active Challenge",
+                    "This challenge no longer exists. It might have expired, been cancelled, or been accepted by someone else.",
+                    colors::NEUTRAL,
                 ),
             )
-            .await?;
-        return Ok(());
-    }
+            .await;
+        }
+        Claim::OwnChallenge => {
+            return reply_ephemeral(
+                ctx,
+                component,
+                embed(
+                    "🤨 Self-Challenge Detected",
+                    "You can't accept your own challenge! That would be... weird.",
+                    colors::WARNING,
+                ),
+            )
+            .await;
+        }
+        Claim::NotYours => {
+            return reply_ephemeral(
+                ctx,
+                component,
+                embed(
+                    "🤨 Not Your Battle",
+                    "Only the challenger can cancel this battle.",
+                    colors::WARNING,
+                ),
+            )
+            .await;
+        }
+        Claim::Claimed(challenge) => challenge,
+    };
 
-    let guild_id = challenge.guild_id;
     let bet = challenge.bet;
+    let challenger = challenge.challenger;
+    if !accept {
+        return close_message(
+            ctx,
+            component,
+            embed(
+                "🏳️ Battle Cancelled",
+                format!(
+                    "{} chickened out of their **{bet} cm** dick battle.",
+                    challenger.mention()
+                ),
+                colors::NEUTRAL,
+            ),
+        )
+        .await;
+    }
+    if challenge.is_expired() {
+        return close_message(
+            ctx,
+            component,
+            embed(
+                "⏰ Challenge Expired",
+                format!("This challenge expired after {CHALLENGE_TTL_HOURS} hours. Nobody was brave enough!"),
+                colors::NEUTRAL,
+            ),
+        )
+        .await;
+    }
 
-    // Check if challenger still has enough length
-    let challenger_id_str = challenger_id.to_string();
-    let guild_id_str = guild_id.to_string();
-    let challenger_length = match sqlx::query!(
-        "SELECT length FROM dicks WHERE user_id = ? AND guild_id = ?",
-        challenger_id_str,
-        guild_id_str
-    )
-    .fetch_optional(&bot.database)
-    .await
-    {
-        Ok(Some(record)) => record.length,
-        Ok(None) => 0, // Should not happen
-        Err(why) => {
-            error!("Database error: {:?}", why);
-            component
-                .create_response(
-                    &ctx.http,
-                    CreateInteractionResponse::Message(
-                        CreateInteractionResponseMessage::new()
-                            .add_embed(
-                                CreateEmbed::new()
-                                    .title("⚠️ Database Error")
-                                    .description("Failed to check challenger's length.")
-                                    .color(0xFF0000),
-                            )
-                            .ephemeral(true),
-                    ),
-                )
-                .await?;
-            return Ok(());
-        }
-    };
+    let guild = challenge.guild_id.to_string();
+    let challenger_str = challenger.to_string();
+    let acceptor_str = user.to_string();
+    db::ensure_user(&bot.db, &acceptor_str, &guild).await?;
 
+    let challenger_length = db::length(&bot.db, &challenger_str, &guild).await?;
     if challenger_length < bet {
-        component.create_response(
-            &ctx.http,
-            CreateInteractionResponse::Message(
-                CreateInteractionResponseMessage::new()
-                    .add_embed(
-                        CreateEmbed::new()
-                            .title("❌ Challenger Has Insufficient Length")
-                            .description(format!(
-                                "The challenger only has **{} cm** left but is trying to bet **{} cm**!\n\nThey can't cover the bet anymore. Challenge declined.",
-                                challenger_length, bet
-                            ))
-                            .color(0xFF0000),
-                    )
-                    .ephemeral(true),
+        return close_message(
+            ctx,
+            component,
+            embed(
+                "❌ Battle Cancelled",
+                format!(
+                    "{} only has **{challenger_length} cm** left and can't cover the **{bet} cm** bet anymore.",
+                    challenger.mention()
+                ),
+                colors::ERROR,
             ),
-        ).await?;
-        pvp_challenges.remove(&challenge_id);
-        return Ok(());
+        )
+        .await;
     }
 
-    // Check if challenged user has enough length
-    let challenged_id_str = challenged_id.to_string();
-    let guild_id_str = guild_id.to_string();
-    let challenged_length = match sqlx::query!(
-        "SELECT length FROM dicks WHERE user_id = ? AND guild_id = ?",
-        challenged_id_str,
-        guild_id_str
-    )
-    .fetch_optional(&bot.database)
-    .await
-    {
-        Ok(Some(record)) => record.length,
-        Ok(None) => {
-            // Create new user
-            info!(
-                "New user detected, adding user {} ({}) in guild id {} to database",
-                component.user.name, challenged_id, guild_id
-            );
-            match sqlx::query!(
-                "INSERT INTO dicks (user_id, guild_id, length, last_grow, dick_of_day_count, 
-                                   pvp_wins, pvp_losses, pvp_max_streak, pvp_current_streak,
-                                   cm_won, cm_lost)
-                 VALUES (?, ?, 0, datetime('now', '-2 days'), 0, 0, 0, 0, 0, 0, 0)",
-                challenged_id_str,
-                guild_id_str
-            )
-            .execute(&bot.database)
+    let acceptor_length = db::length(&bot.db, &acceptor_str, &guild).await?;
+    if acceptor_length < bet {
+        // Leave the challenge open for someone who can afford it.
+        bot.pvp_challenges
+            .write()
             .await
-            {
-                Ok(_) => 0,
-                Err(why) => {
-                    error!("Error creating user: {:?}", why);
-                    0
-                }
-            }
-        }
-        Err(why) => {
-            error!("Database error: {:?}", why);
-            component
-                .create_response(
-                    &ctx.http,
-                    CreateInteractionResponse::Message(
-                        CreateInteractionResponseMessage::new()
-                            .add_embed(
-                                CreateEmbed::new()
-                                    .title("⚠️ Database Error")
-                                    .description("Failed to check your length.")
-                                    .color(0xFF0000),
-                            )
-                            .ephemeral(true),
-                    ),
-                )
-                .await?;
-            return Ok(());
-        }
-    };
-
-    if challenged_length < bet {
-        info!(
-            "Challenged user has insufficient length: {} < {}",
-            challenged_length, bet
-        );
-        component.create_response(
-            &ctx.http,
-            CreateInteractionResponse::Message(
-                CreateInteractionResponseMessage::new()
-                    .add_embed(
-                        CreateEmbed::new()
-                            .title("❌ Insufficient Length")
-                            .description(format!(
-                                "You only have **{} cm** left but you're trying to accept a bet of **{} cm**!\n\nYou can't compete with what you don't have. Grow a bit more first.",
-                                challenged_length, bet
-                            ))
-                            .color(0xFF0000),
-                    )
-                    .ephemeral(true),
+            .insert(challenge_id, challenge);
+        return reply_ephemeral(
+            ctx,
+            component,
+            embed(
+                "❌ Insufficient Length",
+                format!(
+                    "You only have **{acceptor_length} cm** but this battle needs **{bet} cm**!\n\nYou can't compete with what you don't have. Grow a bit more first."
+                ),
+                colors::ERROR,
             ),
-        ).await?;
-        return Ok(()); // Don't remove the challenge, let others accept it
+        )
+        .await;
     }
 
-    // Get challenger info
-    pvp_challenges.remove(&challenge_id).unwrap();
-
-    // Drop the lock before making async calls
-    drop(pvp_challenges);
-
-    // Get usernames and mentions
-    let challenger_mention = challenger_id.mention();
-    let challenged_mention = challenged_id.mention();
-    let challenger = match ctx.http.get_user(challenger_id).await {
-        Ok(user) => escape_markdown(&user.name),
-        Err(_) => "Unknown User".to_string(),
+    let (challenger_roll, acceptor_roll) = {
+        let mut rng = rand::rng();
+        (rng.random_range(1..=100_i64), rng.random_range(1..=100_i64))
     };
-    let challenged = escape_markdown(&component.user.name);
 
-    // Roll for both users
-    let challenger_roll = rand::rng().random_range(1..=100);
-    let challenged_roll = rand::rng().random_range(1..=100);
-
-    let (winner_id, loser_id, winner_mention, loser_mention, winner_roll, loser_roll) =
-        match challenger_roll.cmp(&challenged_roll) {
-            Ordering::Greater => (
-                challenger_id,
-                challenged_id,
-                challenger_mention,
-                challenged_mention,
-                challenger_roll,
-                challenged_roll,
-            ),
-            Ordering::Less => (
-                challenged_id,
-                challenger_id,
-                challenged_mention,
-                challenger_mention,
-                challenged_roll,
-                challenger_roll,
-            ),
-            Ordering::Equal => {
-                // It's a tie! Handle this special case
-                let tie_comment = if bet >= 30 {
-                    format!(
-                        "A {} cm bet and it ends in a tie?! The dick gods must be laughing!",
-                        bet
-                    )
-                } else if bet >= 15 {
-                    "Insanity! Neither dick emerged victorious today!".to_string()
-                } else {
-                    "What are the odds?! Both measuring exactly the same!".to_string()
-                };
-
-                component.create_response(
-                    &ctx.http,
-                    CreateInteractionResponse::UpdateMessage(
-                        CreateInteractionResponseMessage::new()
-                            .add_embed(
-                                CreateEmbed::new()
-                                    .title("🤯 INCREDIBLE! It's a Tie!")
-                                    .description(format!(
-                                        "The contest has concluded with an unbelievable outcome!\n\n**{}** rolled **{}**\n**{}** rolled **{}**\n\n{}\n\nBoth dicks measured EXACTLY the same! The bet has been returned to both competitors. No winners, no losers today!",
-                                        challenger, challenger_roll,
-                                        challenged, challenged_roll,
-                                        tie_comment
-                                    ))
-                                    .color(0x9b59b6) // Purple for a tie
-                                    .footer(CreateEmbedFooter::new("A moment that will go down in dick-measuring history!"))
-                            )
-                            .components(vec![]), // Remove the button
-                    ),
-                ).await?;
-
-                return Ok(());
+    if challenger_roll == acceptor_roll {
+        let comment = match bet {
+            30.. => {
+                format!("A {bet} cm bet and it ends in a tie?! The dick gods must be laughing!")
             }
+            15.. => "Insanity! Neither dick emerged victorious today!".to_string(),
+            _ => "What are the odds?! Both measuring exactly the same!".to_string(),
         };
+        return close_message(
+            ctx,
+            component,
+            embed(
+                "🤯 INCREDIBLE! It's a Tie!",
+                format!(
+                    "{} rolled **{challenger_roll}**\n{} rolled **{acceptor_roll}**\n\n{comment}\n\nNo winners, no losers: everyone keeps their centimeters.",
+                    challenger.mention(),
+                    user.mention()
+                ),
+                colors::PURPLE,
+            )
+            .footer(CreateEmbedFooter::new(
+                "A moment that will go down in dick-measuring history!",
+            )),
+        )
+        .await;
+    }
 
-    // Get previous streak
-    let winner_id_str = winner_id.to_string();
-    let guild_id_str = guild_id.to_string();
-    let loser_id_str = loser_id.to_string();
-    let winner_streak = match sqlx::query!(
-        "SELECT pvp_current_streak FROM dicks WHERE user_id = ? AND guild_id = ?",
-        winner_id_str,
-        guild_id_str
-    )
-    .fetch_optional(&bot.database)
-    .await
-    {
-        Ok(Some(record)) => record.pvp_current_streak,
-        Ok(None) => 0,
-        Err(why) => {
-            error!("Error getting streak: {:?}", why);
-            0
-        }
+    let (winner, loser, winner_roll, loser_roll) = if challenger_roll > acceptor_roll {
+        (challenger, user, challenger_roll, acceptor_roll)
+    } else {
+        (user, challenger, acceptor_roll, challenger_roll)
     };
+    let (winner_str, loser_str) = (winner.to_string(), loser.to_string());
 
-    let new_winner_streak = winner_streak + 1;
-
-    // Update the database for winner
-    match sqlx::query!(
-        "UPDATE dicks SET length = length + ?, 
-         pvp_wins = pvp_wins + 1,
-         pvp_current_streak = ?,
-         pvp_max_streak = CASE WHEN ? > pvp_max_streak THEN ? ELSE pvp_max_streak END,
-         cm_won = cm_won + ?
-         WHERE user_id = ? AND guild_id = ?",
-        bet,
-        new_winner_streak,
-        new_winner_streak,
-        new_winner_streak,
-        bet,
-        winner_id_str,
-        guild_id_str
-    )
-    .execute(&bot.database)
-    .await
-    {
-        Ok(_) => (),
-        Err(why) => error!("Error updating winner: {:?}", why),
-    };
-
-    // Update the database for loser
-    match sqlx::query!(
-        "UPDATE dicks SET 
-         length = length - ?,
-         pvp_losses = pvp_losses + 1,
-         pvp_current_streak = 0,
-         cm_lost = cm_lost + ?
-         WHERE user_id = ? AND guild_id = ?",
+    // Both balances are re-checked inside the transaction so concurrent gifts or battles
+    // can't push anyone below zero.
+    let mut tx = bot.db.begin().await?;
+    let loser_length = sqlx::query_scalar!(
+        "UPDATE dicks
+         SET length = length - ?, pvp_losses = pvp_losses + 1, pvp_current_streak = 0,
+             cm_lost = cm_lost + ?
+         WHERE user_id = ? AND guild_id = ? AND length >= ?
+         RETURNING length",
         bet,
         bet,
-        loser_id_str,
-        guild_id_str
-    )
-    .execute(&bot.database)
-    .await
-    {
-        Ok(_) => (),
-        Err(why) => error!("Error updating loser: {:?}", why),
-    };
-
-    // Get updated lengths
-    let winner_length = match sqlx::query!(
-        "SELECT length FROM dicks WHERE user_id = ? AND guild_id = ?",
-        winner_id_str,
-        guild_id_str
-    )
-    .fetch_one(&bot.database)
-    .await
-    {
-        Ok(record) => record.length,
-        Err(_) => 0,
-    };
-
-    let loser_length = match sqlx::query!(
-        "SELECT length FROM dicks WHERE user_id = ? AND guild_id = ?",
-        loser_id_str,
-        guild_id_str
-    )
-    .fetch_one(&bot.database)
-    .await
-    {
-        Ok(record) => record.length,
-        Err(_) => 0,
-    };
-
-    // Log the PVP results in length_history
-    if let Err(why) = sqlx::query!(
-        "INSERT INTO length_history (user_id, guild_id, length, growth_amount, growth_type)
-         VALUES (?, ?, ?, ?, 'pvp_won')",
-        winner_id_str,
-        guild_id_str,
-        winner_length,
+        loser_str,
+        guild,
         bet
     )
-    .execute(&bot.database)
-    .await
-    {
-        error!("Error logging PVP win history: {:?}", why);
-    }
-
-    let negative_bet = -bet;
-    if let Err(why) = sqlx::query!(
-        "INSERT INTO length_history (user_id, guild_id, length, growth_amount, growth_type)
-         VALUES (?, ?, ?, ?, 'pvp_lost')",
-        loser_id_str,
-        guild_id_str,
-        loser_length,
-        negative_bet
+    .fetch_optional(&mut *tx)
+    .await?;
+    let winner_row = sqlx::query!(
+        "UPDATE dicks
+         SET length = length + ?, pvp_wins = pvp_wins + 1,
+             pvp_current_streak = pvp_current_streak + 1,
+             pvp_max_streak = MAX(pvp_max_streak, pvp_current_streak + 1),
+             cm_won = cm_won + ?
+         WHERE user_id = ? AND guild_id = ? AND length >= ?
+         RETURNING length, pvp_current_streak",
+        bet,
+        bet,
+        winner_str,
+        guild,
+        bet
     )
-    .execute(&bot.database)
+    .fetch_optional(&mut *tx)
+    .await?;
+
+    let (Some(loser_length), Some(winner_row)) = (loser_length, winner_row) else {
+        return close_message(
+            ctx,
+            component,
+            embed(
+                "❌ Battle Cancelled",
+                "Someone's length changed mid-battle and they can't cover the bet anymore.",
+                colors::ERROR,
+            ),
+        )
+        .await;
+    };
+    db::log_history(
+        &mut *tx,
+        &winner_str,
+        &guild,
+        winner_row.length,
+        bet,
+        History::PvpWon,
+    )
+    .await?;
+    db::log_history(
+        &mut *tx,
+        &loser_str,
+        &guild,
+        loser_length,
+        -bet,
+        History::PvpLost,
+    )
+    .await?;
+    tx.commit().await?;
+
+    let (winner_mention, loser_mention) = (winner.mention(), loser.mention());
+    let streak = winner_row.pvp_current_streak;
+    let streak_comment = match streak {
+        5.. => format!(
+            "\n🔥 {winner_mention} is on a **{streak}-win streak**! Absolutely dominating! 👑"
+        ),
+        3.. => format!("\n🔥 {winner_mention} is on a **{streak}-win streak**! 📈"),
+        _ => String::new(),
+    };
+
+    close_message(
+        ctx,
+        component,
+        embed(
+            "🏆 Dick Battle Results!",
+            format!(
+                "👑 {winner_mention} won **{bet} cm** from {loser_mention}!{streak_comment}\n\n{}",
+                taunt(winner_roll - loser_roll, bet, winner_mention, loser_mention)
+            ),
+            colors::SUCCESS,
+        )
+        .field(
+            "🎲 Rolls",
+            format!("👑 {winner_mention}: **{winner_roll}**\n{loser_mention}: **{loser_roll}**"),
+            true,
+        )
+        .field(
+            "📏 New Lengths",
+            format!(
+                "👑 {winner_mention}: **{} cm**\n{loser_mention}: **{loser_length} cm**",
+                winner_row.length
+            ),
+            true,
+        )
+        .footer(CreateEmbedFooter::new("Size DOES matter after all!")),
+    )
     .await
-    {
-        error!("Error logging PVP loss history: {:?}", why);
+}
+
+fn taunt(margin: i64, bet: i64, winner: Mention, loser: Mention) -> String {
+    match margin {
+        51.. if bet >= 30 => format!(
+            "💀 It wasn't even close! {winner}'s dick absolutely DEMOLISHED {loser}'s in a historic beatdown! Those {bet} centimeters will be remembered for generations! 📜"
+        ),
+        51.. => format!(
+            "💀 It wasn't even close! {winner}'s dick destroyed {loser}'s in an absolute massacre! ⚰️"
+        ),
+        21.. if bet >= 20 => format!(
+            "🏆 {winner}'s dick clearly outclassed {loser}'s in this epic showdown! That's {bet} cm of pride changing hands!"
+        ),
+        21.. => format!("🏆 {winner}'s dick clearly outclassed {loser}'s in this epic showdown!"),
+        6.. if bet >= 15 => format!(
+            "🥇 A close match, but {winner}'s dick had just enough extra length to claim victory and snatch those {bet} valuable centimeters!"
+        ),
+        6.. => format!(
+            "🥇 A close match, but {winner}'s dick had just enough extra length to claim victory!"
+        ),
+        _ if bet >= 25 => format!(
+            "😱 WHAT A NAIL-BITER! {winner}'s dick barely edged out {loser}'s by a hair's width! Those {bet} centimeters were almost too close to call!"
+        ),
+        _ => format!(
+            "😮 That was incredibly close! {winner}'s dick barely edged out {loser}'s by a hair's width!"
+        ),
     }
+}
 
-    // Streak comment
-    let streak_comment = if new_winner_streak >= 5 {
-        format!(
-            "\n\n🔥 {} is on a **{}-win streak**! Absolutely dominating! 👑",
-            winner_mention, new_winner_streak
+async fn reply_ephemeral(
+    ctx: &Context,
+    component: &ComponentInteraction,
+    embed: CreateEmbed,
+) -> CommandResult {
+    component
+        .create_response(
+            &ctx.http,
+            CreateInteractionResponse::Message(
+                CreateInteractionResponseMessage::new()
+                    .embed(embed)
+                    .ephemeral(true),
+            ),
         )
-    } else if new_winner_streak >= 3 {
-        format!(
-            "\n\n🔥 {} is on a **{}-win streak**! 📈",
-            winner_mention, new_winner_streak
-        )
-    } else {
-        String::new()
-    };
+        .await?;
+    Ok(())
+}
 
-    // Create a funny taunt based on margin of victory and bet size
-    let taunt = if winner_roll - loser_roll > 50 {
-        if bet >= 30 {
-            format!(
-                "💀 It wasn't even close! {}'s dick absolutely DEMOLISHED {}'s in a historic beatdown! Those {} centimeters will be remembered for generations! 📜",
-                winner_mention, loser_mention, bet
-            )
-        } else {
-            format!(
-                "💀 It wasn't even close! {}'s dick destroyed {}'s in an absolute massacre! ⚰️",
-                winner_mention, loser_mention
-            )
-        }
-    } else if winner_roll - loser_roll > 20 {
-        if bet >= 20 {
-            format!(
-                "🏆 {}'s dick clearly outclassed {}'s in this epic showdown! That's {} cm of pride changing hands!",
-                winner_mention, loser_mention, bet
-            )
-        } else {
-            format!(
-                "🏆 {}'s dick clearly outclassed {}'s in this epic showdown!",
-                winner_mention, loser_mention
-            )
-        }
-    } else if winner_roll - loser_roll > 5 {
-        if bet >= 15 {
-            format!(
-                "🥇 A close match, but {}'s dick had just enough extra length to claim victory and snatch those {} valuable centimeters!",
-                winner_mention, bet
-            )
-        } else {
-            format!(
-                "🥇 A close match, but {}'s dick had just enough extra length to claim victory!",
-                winner_mention
-            )
-        }
-    } else if bet >= 25 {
-        format!(
-            "😱 WHAT A NAIL-BITER! {}'s dick barely edged out {}'s by a hair's width! Those {} centimeters were almost too close to call!",
-            winner_mention, loser_mention, bet
-        )
-    } else {
-        format!(
-            "😮 That was incredibly close! {}'s dick barely edged out {}'s by a hair's width!",
-            winner_mention, loser_mention
-        )
-    };
-
+/// Replaces the challenge message with a final result and removes its buttons.
+async fn close_message(
+    ctx: &Context,
+    component: &ComponentInteraction,
+    embed: CreateEmbed,
+) -> CommandResult {
     component
         .create_response(
             &ctx.http,
             CreateInteractionResponse::UpdateMessage(
                 CreateInteractionResponseMessage::new()
-                    .add_embed(
-                        CreateEmbed::new()
-                            .title("🏆 Dick Battle Results!")
-                            .description(format!(
-                                "👑 {} won **{} cm**!{}",
-                                winner_mention, bet, streak_comment
-                            ))
-                            .field(
-                                "New Lengths",
-                                format!(
-                                    "• 👑 {}: {} cm\n• {}: {} cm",
-                                    winner_mention, winner_length, loser_mention, loser_length
-                                ),
-                                true,
-                            )
-                            .field(
-                                "Rolls",
-                                format!(
-                                    "• 👑 {}: {}\n• {}: {}",
-                                    winner_mention, winner_roll, loser_mention, loser_roll
-                                ),
-                                true,
-                            )
-                            .field("Conclusion", taunt, false)
-                            .color(0x2ECC71)
-                            .footer(CreateEmbedFooter::new("Size DOES matter after all!")),
-                    )
+                    .embed(embed)
                     .components(vec![]),
             ),
         )
         .await?;
-
     Ok(())
 }

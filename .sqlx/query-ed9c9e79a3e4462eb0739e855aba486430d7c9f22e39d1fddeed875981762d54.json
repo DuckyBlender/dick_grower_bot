@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE global_events\n         SET pot_amount = pot_amount + ?\n         WHERE id = ? AND event_type = 'community_pot' AND ends_at > datetime('now')",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "ed9c9e79a3e4462eb0739e855aba486430d7c9f22e39d1fddeed875981762d54"
+}

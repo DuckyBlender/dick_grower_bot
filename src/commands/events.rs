@@ -1,36 +1,40 @@
 use crate::Bot;
-use chrono::{Duration, NaiveDateTime};
-use log::error;
+use crate::commands::{Cmd, CommandResult};
+use crate::db::{self, History};
+use crate::time;
+use crate::utils::{colors, embed};
+use chrono::{DateTime, Duration, NaiveDateTime, Utc};
+use log::{error, info, warn};
 use rand::RngExt;
-use serenity::all::{
-    CommandInteraction, CreateEmbed, CreateEmbedFooter, CreateInteractionResponse,
-    CreateInteractionResponseMessage,
-};
-use serenity::prelude::*;
-use sqlx::Row;
+use rand::seq::IndexedRandom;
+use serenity::all::{ActivityData, Context, CreateCommand, CreateEmbedFooter};
+use std::sync::Arc;
 
-pub const EVENT_DURATION_HOURS: i64 = 4;
-const EVENT_ACTIVATION_CHANCE_NUMERATOR: u32 = 1;
-const EVENT_ACTIVATION_CHANCE_DENOMINATOR: u32 = 2;
-
-const GROWTH_BONUS_EVENT_WEIGHT: u32 = 1;
-const LOWER_COOLDOWN_EVENT_WEIGHT: u32 = 1;
-const LONGER_VIAGRA_EVENT_WEIGHT: u32 = 1;
-const DOUBLE_GROWTH_ROLL_EVENT_WEIGHT: u32 = 1;
-const COMPACT_GROWTH_EVENT_WEIGHT: u32 = 1;
-const JACKPOT_GROWTH_EVENT_WEIGHT: u32 = 1;
-const COMMUNITY_POT_EVENT_WEIGHT: u32 = 1;
+/// Events are rolled at every UTC boundary of this many hours and last until the next one.
+const EVENT_PERIOD_HOURS: i64 = 4;
+/// Ticking slightly after the boundary guarantees the previous event has ended.
+const TICK_DELAY: std::time::Duration = std::time::Duration::from_secs(5);
+const ACTIVATION_CHANCE: (u32, u32) = (1, 2);
 
 const GROWTH_BONUS_PERCENT: i64 = 25;
 const LOWER_COOLDOWN_MINUTES: i64 = 30;
 const LONGER_VIAGRA_HOURS: i64 = 12;
-const COMPACT_GROWTH_MIN_CM: i64 = 1;
-const COMPACT_GROWTH_MAX_CM: i64 = 5;
+const COMPACT_GROWTH_RANGE: (i64, i64) = (1, 5);
 const COMPACT_GROWTH_COOLDOWN_MINUTES: i64 = 15;
 const JACKPOT_EXTRA_CM: i64 = 25;
-const JACKPOT_CHANCE_NUMERATOR: u32 = 1;
-const JACKPOT_CHANCE_DENOMINATOR: u32 = 10;
+const JACKPOT_CHANCE: (u32, u32) = (1, 10);
 const COMMUNITY_POT_CM_PER_GROW: i64 = 1;
+
+/// Relative odds of each event being picked once one starts.
+const EVENT_WEIGHTS: [(EventKind, u32); 7] = [
+    (EventKind::GrowthBonus, 1),
+    (EventKind::LowerCooldown, 1),
+    (EventKind::LongerViagra, 1),
+    (EventKind::DoubleGrowthRoll, 1),
+    (EventKind::CompactGrowth, 1),
+    (EventKind::JackpotGrowth, 1),
+    (EventKind::CommunityPot, 1),
+];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum EventKind {
@@ -57,15 +61,61 @@ impl EventKind {
     }
 
     fn from_str(value: &str) -> Option<Self> {
-        match value {
-            "growth_bonus" => Some(EventKind::GrowthBonus),
-            "lower_cooldown" => Some(EventKind::LowerCooldown),
-            "longer_viagra" => Some(EventKind::LongerViagra),
-            "double_growth_roll" => Some(EventKind::DoubleGrowthRoll),
-            "compact_growth" => Some(EventKind::CompactGrowth),
-            "jackpot_growth" => Some(EventKind::JackpotGrowth),
-            "community_pot" => Some(EventKind::CommunityPot),
-            _ => None,
+        EVENT_WEIGHTS
+            .iter()
+            .map(|&(kind, _)| kind)
+            .find(|kind| kind.as_str() == value)
+    }
+
+    fn name(self) -> &'static str {
+        match self {
+            EventKind::GrowthBonus => "Growth Surge",
+            EventKind::LowerCooldown => "Fast Hands",
+            EventKind::LongerViagra => "Extended Pharmacy Hours",
+            EventKind::DoubleGrowthRoll => "Double Trouble",
+            EventKind::CompactGrowth => "Quick Sprouts",
+            EventKind::JackpotGrowth => "Jackpot Window",
+            EventKind::CommunityPot => "Community Pump",
+        }
+    }
+
+    fn description(self) -> String {
+        match self {
+            EventKind::GrowthBonus => format!(
+                "All /grow results get **+{GROWTH_BONUS_PERCENT}% growth** during this bonus window."
+            ),
+            EventKind::LowerCooldown => format!(
+                "The /grow cooldown is lowered to **{LOWER_COOLDOWN_MINUTES} minutes** while this event is active."
+            ),
+            EventKind::LongerViagra => format!(
+                "New /viagra activations last **{LONGER_VIAGRA_HOURS} hours** during this event."
+            ),
+            EventKind::DoubleGrowthRoll => {
+                "Every /grow rolls twice and keeps the better result.".to_string()
+            }
+            EventKind::CompactGrowth => format!(
+                "/grow becomes smaller but faster: **{}-{} cm** every **{COMPACT_GROWTH_COOLDOWN_MINUTES} minutes**.",
+                COMPACT_GROWTH_RANGE.0, COMPACT_GROWTH_RANGE.1
+            ),
+            EventKind::JackpotGrowth => format!(
+                "Every /grow has a **{}/{}** chance to hit an extra **+{JACKPOT_EXTRA_CM} cm** jackpot.",
+                JACKPOT_CHANCE.0, JACKPOT_CHANCE.1
+            ),
+            EventKind::CommunityPot => format!(
+                "Every /grow adds **+{COMMUNITY_POT_CM_PER_GROW} cm** to a global pot. When the event ends, the pot goes to a random participant."
+            ),
+        }
+    }
+
+    fn bonus_value(self) -> i64 {
+        match self {
+            EventKind::GrowthBonus => GROWTH_BONUS_PERCENT,
+            EventKind::LowerCooldown => LOWER_COOLDOWN_MINUTES,
+            EventKind::LongerViagra => LONGER_VIAGRA_HOURS,
+            EventKind::DoubleGrowthRoll => 2,
+            EventKind::CompactGrowth => COMPACT_GROWTH_COOLDOWN_MINUTES,
+            EventKind::JackpotGrowth => JACKPOT_EXTRA_CM,
+            EventKind::CommunityPot => COMMUNITY_POT_CM_PER_GROW,
         }
     }
 }
@@ -81,8 +131,8 @@ pub struct GlobalEvent {
 }
 
 impl GlobalEvent {
-    pub fn growth_multiplier(&self) -> Option<f64> {
-        (self.kind == EventKind::GrowthBonus).then_some(1.0 + self.bonus_value as f64 / 100.0)
+    pub fn growth_bonus_percent(&self) -> Option<i64> {
+        (self.kind == EventKind::GrowthBonus).then_some(self.bonus_value)
     }
 
     pub fn grow_cooldown_minutes(&self) -> Option<i64> {
@@ -98,386 +148,303 @@ impl GlobalEvent {
     }
 
     pub fn growth_range(&self) -> Option<(i64, i64)> {
-        (self.kind == EventKind::CompactGrowth)
-            .then_some((COMPACT_GROWTH_MIN_CM, COMPACT_GROWTH_MAX_CM))
+        (self.kind == EventKind::CompactGrowth).then_some(COMPACT_GROWTH_RANGE)
     }
 
     pub fn rolls_growth_twice(&self) -> bool {
-        matches!(self.kind, EventKind::DoubleGrowthRoll)
+        self.kind == EventKind::DoubleGrowthRoll
     }
 
-    pub fn jackpot_extra_cm(&self) -> Option<i64> {
-        if self.kind == EventKind::JackpotGrowth
-            && rand::rng().random_ratio(JACKPOT_CHANCE_NUMERATOR, JACKPOT_CHANCE_DENOMINATOR)
-        {
-            Some(JACKPOT_EXTRA_CM)
-        } else {
-            None
-        }
+    pub fn roll_jackpot(&self) -> Option<i64> {
+        (self.kind == EventKind::JackpotGrowth
+            && rand::rng().random_ratio(JACKPOT_CHANCE.0, JACKPOT_CHANCE.1))
+        .then_some(JACKPOT_EXTRA_CM)
     }
 
     pub fn community_pot_cm_per_grow(&self) -> Option<i64> {
         (self.kind == EventKind::CommunityPot).then_some(COMMUNITY_POT_CM_PER_GROW)
     }
-
-    pub fn ends_discord_timestamp(&self) -> String {
-        format!("<t:{}:R>", self.ends_at.and_utc().timestamp())
-    }
 }
 
-pub async fn get_active_global_event(bot: &Bot) -> Option<GlobalEvent> {
-    let now = chrono::Utc::now().naive_utc();
+pub fn register() -> CreateCommand {
+    CreateCommand::new("event").description("View the current global growth event")
+}
 
-    let row = sqlx::query(
-        "SELECT id, event_type, name, description, bonus_value, ends_at
+pub async fn run(cmd: &Cmd<'_>) -> CommandResult {
+    let response = match active_event(cmd.bot).await? {
+        Some(event) => embed(
+            format!("🌍 Global Event: {}", event.name),
+            format!(
+                "{}\n\nEnds {}",
+                event.description,
+                time::relative(event.ends_at)
+            ),
+            colors::GOLD,
+        )
+        .footer(CreateEmbedFooter::new(
+            "Events are global and affect every server.",
+        )),
+        None => {
+            let next_roll = next_period_start(Utc::now()).naive_utc();
+            let possible = EVENT_WEIGHTS
+                .iter()
+                .map(|(kind, _)| kind.name())
+                .collect::<Vec<_>>()
+                .join(" · ");
+            embed(
+                "🌍 No Global Event",
+                format!(
+                    "Nothing special is happening right now.\n\nNext event roll {} ({}% chance).\n\n**Possible events:** {possible}",
+                    time::relative(next_roll),
+                    ACTIVATION_CHANCE.0 * 100 / ACTIVATION_CHANCE.1
+                ),
+                colors::NEUTRAL,
+            )
+            .footer(CreateEmbedFooter::new(
+                "Events are global and affect every server.",
+            ))
+        }
+    };
+    cmd.reply(response).await
+}
+
+pub async fn active_event(bot: &Bot) -> sqlx::Result<Option<GlobalEvent>> {
+    let Some(row) = sqlx::query!(
+        r#"SELECT id as "id!", event_type, name, description, bonus_value, ends_at
          FROM global_events
          WHERE ends_at > datetime('now')
          ORDER BY ends_at DESC
-         LIMIT 1",
+         LIMIT 1"#
     )
-    .fetch_optional(&bot.database)
-    .await
-    .ok()??;
+    .fetch_optional(&bot.db)
+    .await?
+    else {
+        return Ok(None);
+    };
 
-    let event_type: String = row.try_get("event_type").ok()?;
-    let kind = EventKind::from_str(&event_type)?;
-    let ends_at_str: String = row.try_get("ends_at").ok()?;
-    let ends_at = NaiveDateTime::parse_from_str(&ends_at_str, "%Y-%m-%d %H:%M:%S").ok()?;
+    let (Some(kind), Some(ends_at)) = (
+        EventKind::from_str(&row.event_type),
+        time::parse(&row.ends_at),
+    ) else {
+        warn!("Ignoring malformed global event {}", row.id);
+        return Ok(None);
+    };
 
-    if ends_at <= now {
-        return None;
-    }
-
-    Some(GlobalEvent {
-        id: row.try_get("id").ok()?,
+    Ok(Some(GlobalEvent {
+        id: row.id,
         kind,
-        name: row.try_get("name").ok()?,
-        description: row.try_get("description").ok()?,
-        bonus_value: row.try_get("bonus_value").ok()?,
+        name: row.name,
+        description: row.description,
+        bonus_value: row.bonus_value,
         ends_at,
-    })
+    }))
 }
 
-pub async fn handle_event_command(
-    ctx: &Context,
-    command: &CommandInteraction,
-) -> Result<(), serenity::Error> {
-    let data = ctx.data.read().await;
-    let bot = data.get::<Bot>().unwrap();
-
-    if let Some(event) = get_active_global_event(bot).await {
-        let builder = CreateInteractionResponse::Message(
-            CreateInteractionResponseMessage::new().add_embed(
-                CreateEmbed::new()
-                    .title(format!("🌍 Global Event Active: {}", event.name))
-                    .description(format!(
-                        "{}\n\nEvent ends: {}",
-                        event.description,
-                        event.ends_discord_timestamp()
-                    ))
-                    .color(0xF1C40F)
-                    .footer(CreateEmbedFooter::new(
-                        "This event is global and affects every server.",
-                    )),
-            ),
-        );
-        command.create_response(&ctx.http, builder).await
-    } else {
-        let builder = CreateInteractionResponse::Message(
-            CreateInteractionResponseMessage::new().add_embed(
-                CreateEmbed::new()
-                    .title("🌍 No Global Event")
-                    .description(
-                        "Nothing special is happening globally right now. Events start automatically with a 50% chance every so often.",
-                    )
-                    .color(0xAAAAAA)
-                    .footer(CreateEmbedFooter::new(
-                        "Events are global and affect every server when active.",
-                    )),
-            ),
-        );
-        command.create_response(&ctx.http, builder).await
-    }
-}
-
-pub fn roll_global_event() -> GlobalEvent {
-    let growth_bonus_cutoff = GROWTH_BONUS_EVENT_WEIGHT;
-    let lower_cooldown_cutoff = growth_bonus_cutoff + LOWER_COOLDOWN_EVENT_WEIGHT;
-    let longer_viagra_cutoff = lower_cooldown_cutoff + LONGER_VIAGRA_EVENT_WEIGHT;
-    let double_growth_cutoff = longer_viagra_cutoff + DOUBLE_GROWTH_ROLL_EVENT_WEIGHT;
-    let compact_growth_cutoff = double_growth_cutoff + COMPACT_GROWTH_EVENT_WEIGHT;
-    let jackpot_growth_cutoff = compact_growth_cutoff + JACKPOT_GROWTH_EVENT_WEIGHT;
-    let total_event_weight = jackpot_growth_cutoff + COMMUNITY_POT_EVENT_WEIGHT;
-    let roll = rand::rng().random_range(0..total_event_weight);
-
-    if roll < growth_bonus_cutoff {
-        GlobalEvent {
-            id: 0,
-            kind: EventKind::GrowthBonus,
-            name: "Growth Surge".to_string(),
-            description: format!(
-                "All /grow results get **+{}% growth** during this bonus window.",
-                GROWTH_BONUS_PERCENT
-            ),
-            bonus_value: GROWTH_BONUS_PERCENT,
-            ends_at: chrono::Utc::now().naive_utc(),
-        }
-    } else if roll < lower_cooldown_cutoff {
-        GlobalEvent {
-            id: 0,
-            kind: EventKind::LowerCooldown,
-            name: "Fast Hands".to_string(),
-            description: format!(
-                "The /grow cooldown is lowered to **{} minutes** while this event is active.",
-                LOWER_COOLDOWN_MINUTES
-            ),
-            bonus_value: LOWER_COOLDOWN_MINUTES,
-            ends_at: chrono::Utc::now().naive_utc(),
-        }
-    } else if roll < longer_viagra_cutoff {
-        GlobalEvent {
-            id: 0,
-            kind: EventKind::LongerViagra,
-            name: "Extended Pharmacy Hours".to_string(),
-            description: format!(
-                "New /viagra activations last **{} hours** during this event.",
-                LONGER_VIAGRA_HOURS
-            ),
-            bonus_value: LONGER_VIAGRA_HOURS,
-            ends_at: chrono::Utc::now().naive_utc(),
-        }
-    } else if roll < double_growth_cutoff {
-        GlobalEvent {
-            id: 0,
-            kind: EventKind::DoubleGrowthRoll,
-            name: "Double Trouble".to_string(),
-            description: "Every /grow rolls twice and keeps the better result.".to_string(),
-            bonus_value: 2,
-            ends_at: chrono::Utc::now().naive_utc(),
-        }
-    } else if roll < compact_growth_cutoff {
-        GlobalEvent {
-            id: 0,
-            kind: EventKind::CompactGrowth,
-            name: "Quick Sprouts".to_string(),
-            description: format!(
-                "/grow becomes smaller but faster: **{}-{} cm** every **{} minutes**.",
-                COMPACT_GROWTH_MIN_CM, COMPACT_GROWTH_MAX_CM, COMPACT_GROWTH_COOLDOWN_MINUTES
-            ),
-            bonus_value: COMPACT_GROWTH_COOLDOWN_MINUTES,
-            ends_at: chrono::Utc::now().naive_utc(),
-        }
-    } else if roll < jackpot_growth_cutoff {
-        GlobalEvent {
-            id: 0,
-            kind: EventKind::JackpotGrowth,
-            name: "Jackpot Window".to_string(),
-            description: format!(
-                "Every /grow has a **{}/{}** chance to hit an extra **+{} cm** jackpot.",
-                JACKPOT_CHANCE_NUMERATOR, JACKPOT_CHANCE_DENOMINATOR, JACKPOT_EXTRA_CM
-            ),
-            bonus_value: JACKPOT_EXTRA_CM,
-            ends_at: chrono::Utc::now().naive_utc(),
-        }
-    } else {
-        GlobalEvent {
-            id: 0,
-            kind: EventKind::CommunityPot,
-            name: "Community Pump".to_string(),
-            description: format!(
-                "Every /grow adds **+{} cm** to a global pot. The pot is automatically awarded to a random participant after the event ends.",
-                COMMUNITY_POT_CM_PER_GROW
-            ),
-            bonus_value: COMMUNITY_POT_CM_PER_GROW,
-            ends_at: chrono::Utc::now().naive_utc(),
-        }
-    }
-}
-
-pub async fn add_to_community_pot(bot: &Bot, event_id: i64, amount: i64) {
-    if let Err(why) = sqlx::query(
+pub async fn add_to_community_pot(bot: &Bot, event_id: i64, amount: i64) -> sqlx::Result<()> {
+    sqlx::query!(
         "UPDATE global_events
          SET pot_amount = pot_amount + ?
          WHERE id = ? AND event_type = 'community_pot' AND ends_at > datetime('now')",
+        amount,
+        event_id
     )
-    .bind(amount)
-    .bind(event_id)
-    .execute(&bot.database)
-    .await
-    {
-        error!("Error adding to community pot: {:?}", why);
+    .execute(&bot.db)
+    .await?;
+    Ok(())
+}
+
+fn period_start(now: DateTime<Utc>) -> DateTime<Utc> {
+    let timestamp = now.timestamp();
+    let start = timestamp - timestamp.rem_euclid(EVENT_PERIOD_HOURS * 3600);
+    DateTime::from_timestamp(start, 0).expect("period start is a valid timestamp")
+}
+
+fn next_period_start(now: DateTime<Utc>) -> DateTime<Utc> {
+    period_start(now) + Duration::hours(EVENT_PERIOD_HOURS)
+}
+
+/// Rolls a new event at every period boundary and pays out finished community pots.
+pub async fn run_scheduler(ctx: Context, bot: Arc<Bot>) {
+    loop {
+        let now = Utc::now();
+        let until_boundary = (next_period_start(now) - now).to_std().unwrap_or_default();
+        tokio::time::sleep(until_boundary + TICK_DELAY).await;
+
+        loop {
+            match resolve_expired_community_pot(&bot).await {
+                Ok(Some(message)) => info!("Event system: {message}"),
+                Ok(None) => break,
+                Err(why) => {
+                    error!("Error resolving community pot: {why}");
+                    break;
+                }
+            }
+        }
+
+        match try_start_event(&bot).await {
+            Ok(Some(event)) => info!("Event system: started {}", event.name),
+            Ok(None) => info!("Event system: no event this period"),
+            Err(why) => error!("Error starting global event: {why}"),
+        }
+
+        update_presence(&ctx, &bot).await;
     }
 }
 
-pub async fn resolve_expired_community_pot(bot: &Bot) -> Option<String> {
-    let event = sqlx::query(
-        "SELECT id, name, pot_amount, started_at, ends_at
+async fn try_start_event(bot: &Bot) -> sqlx::Result<Option<GlobalEvent>> {
+    if active_event(bot).await?.is_some()
+        || !rand::rng().random_ratio(ACTIVATION_CHANCE.0, ACTIVATION_CHANCE.1)
+    {
+        return Ok(None);
+    }
+
+    let (kind, _) = *EVENT_WEIGHTS
+        .choose_weighted(&mut rand::rng(), |&(_, weight)| weight)
+        .expect("event weights are valid");
+    let now = Utc::now();
+    let started_at = time::format(now.naive_utc());
+    let ends_at = next_period_start(now).naive_utc();
+    let ends_at_str = time::format(ends_at);
+    let (kind_str, name, description, bonus_value) = (
+        kind.as_str(),
+        kind.name(),
+        kind.description(),
+        kind.bonus_value(),
+    );
+
+    let id = sqlx::query!(
+        "INSERT INTO global_events (event_type, name, description, bonus_value, started_at, ends_at)
+         VALUES (?, ?, ?, ?, ?, ?)",
+        kind_str,
+        name,
+        description,
+        bonus_value,
+        started_at,
+        ends_at_str
+    )
+    .execute(&bot.db)
+    .await?
+    .last_insert_rowid();
+
+    Ok(Some(GlobalEvent {
+        id,
+        kind,
+        name: name.to_string(),
+        description,
+        bonus_value,
+        ends_at,
+    }))
+}
+
+async fn resolve_expired_community_pot(bot: &Bot) -> sqlx::Result<Option<String>> {
+    let Some(event) = sqlx::query!(
+        r#"SELECT id as "id!", name, pot_amount, started_at, ends_at
          FROM global_events
          WHERE event_type = 'community_pot'
            AND ends_at <= datetime('now')
            AND resolved_at IS NULL
          ORDER BY ends_at ASC
-         LIMIT 1",
+         LIMIT 1"#
     )
-    .fetch_optional(&bot.database)
-    .await
-    .ok()??;
+    .fetch_optional(&bot.db)
+    .await?
+    else {
+        return Ok(None);
+    };
 
-    let event_id = event.try_get::<i64, _>("id").ok()?;
-    let event_name = event.try_get::<String, _>("name").ok()?;
-    let pot_amount = event.try_get::<i64, _>("pot_amount").ok()?;
-    let started_at = event.try_get::<String, _>("started_at").ok()?;
-    let ends_at = event.try_get::<String, _>("ends_at").ok()?;
-
-    let now_str = chrono::Utc::now()
-        .naive_utc()
-        .format("%Y-%m-%d %H:%M:%S")
-        .to_string();
-
-    if pot_amount <= 0 {
-        mark_community_pot_resolved(bot, event_id, &now_str).await;
-        return Some(format!(
-            "**{}** ended, but nobody built up the pot.",
-            event_name
-        ));
-    }
-
-    let participants = sqlx::query(
-        "SELECT user_id, guild_id, length
-         FROM dicks
-         WHERE last_grow >= ? AND last_grow <= ?",
+    let grow = History::Grow.as_str();
+    let participants = sqlx::query!(
+        "SELECT DISTINCT user_id, guild_id
+         FROM length_history
+         WHERE growth_type = ? AND timestamp >= ? AND timestamp < ?",
+        grow,
+        event.started_at,
+        event.ends_at
     )
-    .bind(&started_at)
-    .bind(&ends_at)
-    .fetch_all(&bot.database)
-    .await
-    .ok()?;
+    .fetch_all(&bot.db)
+    .await?;
 
-    if participants.is_empty() {
-        mark_community_pot_resolved(bot, event_id, &now_str).await;
-        return Some(format!(
-            "**{}** ended with **{} cm** in the pot, but there were no eligible growers.",
-            event_name, pot_amount
-        ));
-    }
-
-    let winner_idx = rand::rng().random_range(0..participants.len());
-    let winner = &participants[winner_idx];
-    let user_id = winner.try_get::<String, _>("user_id").ok()?;
-    let guild_id = winner.try_get::<String, _>("guild_id").ok()?;
-    let old_length = winner.try_get::<i64, _>("length").ok()?;
-    let new_length = old_length + pot_amount;
-
-    let mut tx = bot.database.begin().await.ok()?;
-
-    if sqlx::query("UPDATE dicks SET length = length + ? WHERE user_id = ? AND guild_id = ?")
-        .bind(pot_amount)
-        .bind(&user_id)
-        .bind(&guild_id)
-        .execute(&mut *tx)
-        .await
-        .is_err()
-    {
-        return None;
-    }
-
-    if sqlx::query(
-        "INSERT INTO length_history (user_id, guild_id, length, growth_amount, growth_type)
-         VALUES (?, ?, ?, ?, 'community_pot')",
+    let mut tx = bot.db.begin().await?;
+    sqlx::query!(
+        "UPDATE global_events SET resolved_at = datetime('now') WHERE id = ?",
+        event.id
     )
-    .bind(&user_id)
-    .bind(&guild_id)
-    .bind(new_length)
-    .bind(pot_amount)
     .execute(&mut *tx)
-    .await
-    .is_err()
-    {
-        return None;
-    }
+    .await?;
 
-    if sqlx::query("UPDATE global_events SET resolved_at = ? WHERE id = ?")
-        .bind(&now_str)
-        .bind(event_id)
-        .execute(&mut *tx)
-        .await
-        .is_err()
-    {
-        return None;
-    }
+    let winner = participants.choose(&mut rand::rng());
+    let message = match winner {
+        _ if event.pot_amount <= 0 => {
+            format!("{} ended, but nobody built up the pot", event.name)
+        }
+        None => format!(
+            "{} ended with {} cm in the pot, but there were no eligible growers",
+            event.name, event.pot_amount
+        ),
+        Some(winner) => {
+            let new_length = sqlx::query_scalar!(
+                "UPDATE dicks SET length = length + ? WHERE user_id = ? AND guild_id = ?
+                 RETURNING length",
+                event.pot_amount,
+                winner.user_id,
+                winner.guild_id
+            )
+            .fetch_one(&mut *tx)
+            .await?;
+            db::log_history(
+                &mut *tx,
+                &winner.user_id,
+                &winner.guild_id,
+                new_length,
+                event.pot_amount,
+                History::CommunityPot,
+            )
+            .await?;
+            format!(
+                "{} ended; user {} in guild {} won the {} cm pot (now {} cm)",
+                event.name, winner.user_id, winner.guild_id, event.pot_amount, new_length
+            )
+        }
+    };
 
-    tx.commit().await.ok()?;
-
-    Some(format!(
-        "**{}** ended with a **{} cm** pot.\n\nWinner: <@{}>\nNew length: **{} cm**",
-        event_name, pot_amount, user_id, new_length
-    ))
+    tx.commit().await?;
+    Ok(Some(message))
 }
 
-async fn mark_community_pot_resolved(bot: &Bot, event_id: i64, resolved_at: &str) {
-    if let Err(why) = sqlx::query("UPDATE global_events SET resolved_at = ? WHERE id = ?")
-        .bind(resolved_at)
-        .bind(event_id)
-        .execute(&bot.database)
-        .await
-    {
-        error!("Error resolving empty community pot: {:?}", why);
-    }
+pub async fn update_presence(ctx: &Context, bot: &Bot) {
+    let status = match active_event(bot).await {
+        Ok(Some(event)) => format!("🌍 Event: {} — /event", event.name),
+        Ok(None) => "🍆 /grow your legacy".to_string(),
+        Err(why) => {
+            error!("Error fetching event for presence: {why}");
+            return;
+        }
+    };
+    ctx.set_activity(Some(ActivityData::custom(status)));
 }
 
-pub async fn try_start_new_event(bot: &Bot) -> Option<GlobalEvent> {
-    if get_active_global_event(bot).await.is_some() {
-        return None;
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn periods_align_to_utc_boundaries() {
+        let now = DateTime::parse_from_rfc3339("2026-05-01T13:37:42Z")
+            .unwrap()
+            .to_utc();
+        assert_eq!(period_start(now).to_rfc3339(), "2026-05-01T12:00:00+00:00");
+        assert_eq!(
+            next_period_start(now).to_rfc3339(),
+            "2026-05-01T16:00:00+00:00"
+        );
+        let boundary = period_start(now);
+        assert_eq!(period_start(boundary), boundary);
     }
 
-    if !rand::rng().random_ratio(
-        EVENT_ACTIVATION_CHANCE_NUMERATOR,
-        EVENT_ACTIVATION_CHANCE_DENOMINATOR,
-    ) {
-        return None;
+    #[test]
+    fn event_kinds_round_trip() {
+        for (kind, _) in EVENT_WEIGHTS {
+            assert_eq!(EventKind::from_str(kind.as_str()), Some(kind));
+        }
     }
-
-    let event = roll_global_event();
-    let now = chrono::Utc::now().naive_utc();
-    let ends_at = now + Duration::hours(EVENT_DURATION_HOURS);
-    let now_str = now.format("%Y-%m-%d %H:%M:%S").to_string();
-    let ends_at_str = ends_at.format("%Y-%m-%d %H:%M:%S").to_string();
-
-    if let Err(why) = sqlx::query(
-        "INSERT INTO global_events (event_type, name, description, bonus_value, started_at, ends_at)
-         VALUES (?, ?, ?, ?, ?, ?)",
-    )
-    .bind(event.kind.as_str())
-    .bind(&event.name)
-    .bind(&event.description)
-    .bind(event.bonus_value)
-    .bind(now_str)
-    .bind(ends_at_str)
-    .execute(&bot.database)
-    .await
-    {
-        error!("Error creating global event: {:?}", why);
-        return None;
-    }
-
-    Some(GlobalEvent { ends_at, ..event })
-}
-
-pub async fn tick_event_system(bot: &Bot) -> Vec<String> {
-    let mut messages = Vec::new();
-
-    if let Some(msg) = resolve_expired_community_pot(bot).await {
-        messages.push(msg);
-    }
-
-    if let Some(event) = try_start_new_event(bot).await {
-        messages.push(format!(
-            "🌍 Global Event Started: {} — {} (ends {})",
-            event.name,
-            event.description,
-            event.ends_discord_timestamp()
-        ));
-    }
-
-    messages
 }

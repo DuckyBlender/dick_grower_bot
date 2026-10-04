@@ -1,295 +1,137 @@
-use crate::Bot;
-use crate::commands::events::get_active_global_event;
-
+use crate::commands::events::{GlobalEvent, active_event};
+use crate::commands::{Cmd, CommandResult};
+use crate::db;
+use crate::time;
+use crate::utils::{colors, embed};
 use chrono::{Duration, NaiveDateTime};
-use log::{error, info};
-use serenity::all::{
-    CommandInteraction, CreateEmbed, CreateEmbedFooter, CreateInteractionResponse,
-    CreateInteractionResponseMessage,
-};
-use serenity::prelude::*;
+use serenity::all::{CreateCommand, CreateEmbedFooter};
 
-const VIAGRA_COOLDOWN_HOURS: i64 = 20;
-const VIAGRA_DURATION_HOURS: i64 = 6; // 6 hours of effect
+pub const BOOST_PERCENT: i64 = 20;
+pub const COOLDOWN_HOURS: i64 = 20;
+pub const DURATION_HOURS: i64 = 6;
 
-pub async fn handle_viagra_command(
-    ctx: &Context,
-    command: &CommandInteraction,
-) -> Result<(), serenity::Error> {
-    let data = ctx.data.read().await;
-    let bot = data.get::<Bot>().unwrap();
+/// When the viagra effect ends, if it's still active.
+pub fn active_until(active_until: Option<&str>) -> Option<NaiveDateTime> {
+    active_until
+        .and_then(time::parse)
+        .filter(|&until| until > time::now())
+}
 
-    let user_id = command.user.id.to_string();
-    let guild_id = command.guild_id.unwrap().to_string();
+/// When viagra can be taken again, if it's still on cooldown.
+pub fn cooldown_ends(last_used: Option<&str>) -> Option<NaiveDateTime> {
+    last_used
+        .and_then(time::parse)
+        .map(|used| used + Duration::hours(COOLDOWN_HOURS))
+        .filter(|&ready| ready > time::now())
+}
 
-    // Check user's viagra status
-    let user_status = match sqlx::query!(
+pub fn register() -> CreateCommand {
+    CreateCommand::new("viagra").description(format!(
+        "Boost your growth by {BOOST_PERCENT}% for {DURATION_HOURS} hours ({COOLDOWN_HOURS} hour cooldown)"
+    ))
+}
+
+pub async fn run(cmd: &Cmd<'_>) -> CommandResult {
+    db::ensure_user(&cmd.bot.db, &cmd.user, &cmd.guild).await?;
+
+    let status = sqlx::query!(
         "SELECT viagra_last_used, viagra_active_until FROM dicks WHERE user_id = ? AND guild_id = ?",
-        user_id,
-        guild_id
+        cmd.user,
+        cmd.guild
     )
-    .fetch_optional(&bot.database)
-    .await
-    {
-        Ok(Some(record)) => (record.viagra_last_used, record.viagra_active_until),
-        Ok(None) => {
-            // New user, create a record
-            info!(
-                "New user detected for viagra, adding user {} ({}) in guild id {} to database",
-                command.user.name, user_id, guild_id
-            );
-            match sqlx::query!(
-                "INSERT INTO dicks (user_id, guild_id, length, last_grow, growth_count, dick_of_day_count, 
-                                   pvp_wins, pvp_losses, pvp_max_streak, pvp_current_streak,
-                                   cm_won, cm_lost)
-                 VALUES (?, ?, 0, datetime('now', '-2 days'), 0, 0, 0, 0, 0, 0, 0, 0)",
-                user_id,
-                guild_id
-            )
-            .execute(&bot.database)
-            .await
-            {
-                Ok(_) => (),
-                Err(why) => {
-                    error!("Error creating user for viagra: {:?}", why);
-                }
-            };
-            (None, None)
-        }
-        Err(why) => {
-            error!("Database error checking viagra status: {:?}", why);
-            let builder = CreateInteractionResponse::Message(
-                CreateInteractionResponseMessage::new().add_embed(
-                    CreateEmbed::new()
-                        .title("⚠️ Database Error")
-                        .description("Failed to check your viagra status. The pharmacy is closed.")
-                        .color(0xFF0000),
-                ),
-            );
-            return command.create_response(&ctx.http, builder).await;
-        }
-    };
+    .fetch_one(&cmd.bot.db)
+    .await?;
 
-    let now = chrono::Utc::now().naive_utc();
-
-    // Check if viagra is currently active
-    if let Some(active_until_str) = user_status.1
-        && let Ok(active_until) =
-            NaiveDateTime::parse_from_str(&active_until_str, "%Y-%m-%d %H:%M:%S")
-        && now < active_until
-    {
-        let time_left = active_until - now;
-        let unix_timestamp = chrono::Utc::now().timestamp() + time_left.num_seconds();
-        let discord_timestamp = format!("<t:{}:R>", unix_timestamp);
-
-        let builder = CreateInteractionResponse::Message(
-            CreateInteractionResponseMessage::new()
-                .add_embed(
-                    CreateEmbed::new()
-                        .title("💊 Viagra Already Active!")
-                        .description(format!(
-                            "Your viagra is still working its magic! 🔥\n\nEffect ends: {}\n\nYou'll get +20% growth until then. No need to double dose!",
-                            discord_timestamp
-                        ))
-                        .color(0x3498DB)
-                        .footer(CreateEmbedFooter::new(
-                            "Patience, young grasshopper. Good things come to those who wait.",
-                        ))
+    if let Some(until) = active_until(status.viagra_active_until.as_deref()) {
+        return cmd
+            .reply_ephemeral(
+                embed(
+                    "💊 Viagra Already Active!",
+                    format!(
+                        "Your viagra is still working its magic! 🔥\n\nYou'll get **+{BOOST_PERCENT}% growth** until it wears off {}. No need to double dose!",
+                        time::relative(until)
+                    ),
+                    colors::INFO,
                 )
-                .ephemeral(true)
-        );
-        return command.create_response(&ctx.http, builder).await;
+                .footer(CreateEmbedFooter::new(
+                    "Patience, young grasshopper. Good things come to those who wait.",
+                )),
+            )
+            .await;
     }
 
-    // Check cooldown
-    if let Some(last_used_str) = user_status.0
-        && let Ok(last_used) = NaiveDateTime::parse_from_str(&last_used_str, "%Y-%m-%d %H:%M:%S")
-    {
-        let time_since_last = now - last_used;
-        let cooldown_remaining = Duration::hours(VIAGRA_COOLDOWN_HOURS) - time_since_last;
-
-        if !cooldown_remaining.is_zero() && cooldown_remaining > Duration::zero() {
-            let unix_timestamp = chrono::Utc::now().timestamp() + cooldown_remaining.num_seconds();
-            let discord_timestamp = format!("<t:{}:R>", unix_timestamp);
-
-            let builder = CreateInteractionResponse::Message(
-                CreateInteractionResponseMessage::new()
-                    .add_embed(
-                        CreateEmbed::new()
-                            .title("🚫 Viagra Cooldown Active")
-                            .description(format!(
-                                "Whoa there, speedster! You need to wait before taking another viagra.\n\nCooldown ends: {}\n\nYour body needs time to recover from the last enhancement session.",
-                                discord_timestamp
-                            ))
-                            .color(0xFF5733)
-                            .footer(CreateEmbedFooter::new(
-                                "Remember: Too much enhancement can lead to... complications.",
-                            ))
-                    )
-                    .ephemeral(true)
-            );
-            return command.create_response(&ctx.http, builder).await;
-        }
+    if let Some(ready) = cooldown_ends(status.viagra_last_used.as_deref()) {
+        return reply_cooldown(cmd, ready).await;
     }
 
-    let active_event = get_active_global_event(bot).await;
-    let viagra_duration_hours = active_event
-        .as_ref()
-        .and_then(|event| event.viagra_duration_hours())
-        .unwrap_or(VIAGRA_DURATION_HOURS);
+    let event = active_event(cmd.bot).await?;
+    let event_hours = event.as_ref().and_then(GlobalEvent::viagra_duration_hours);
+    let duration_hours = event_hours.unwrap_or(DURATION_HOURS);
 
-    // Activate viagra
-    let active_until = now + Duration::hours(viagra_duration_hours);
-    let active_until_str = active_until.format("%Y-%m-%d %H:%M:%S").to_string();
-    let now_str = now.format("%Y-%m-%d %H:%M:%S").to_string();
+    let now = time::now();
+    let effect_ends = now + Duration::hours(duration_hours);
+    let next_available = now + Duration::hours(COOLDOWN_HOURS);
+    let (now_str, effect_ends_str) = (time::format(now), time::format(effect_ends));
+    let cooldown_cutoff = time::format(now - Duration::hours(COOLDOWN_HOURS));
 
-    match sqlx::query!(
-        "UPDATE dicks SET viagra_last_used = ?, viagra_active_until = ? WHERE user_id = ? AND guild_id = ?",
+    // The cooldown is re-checked in the UPDATE so concurrent invocations can't both succeed.
+    let claimed = sqlx::query!(
+        "UPDATE dicks SET viagra_last_used = ?, viagra_active_until = ?
+         WHERE user_id = ? AND guild_id = ?
+           AND (viagra_last_used IS NULL OR viagra_last_used <= ?)",
         now_str,
-        active_until_str,
-        user_id,
-        guild_id
+        effect_ends_str,
+        cmd.user,
+        cmd.guild,
+        cooldown_cutoff
     )
-    .execute(&bot.database)
-    .await
-    {
-        Ok(_) => (),
-        Err(why) => {
-            error!("Error activating viagra: {:?}", why);
-            let builder = CreateInteractionResponse::Message(
-                CreateInteractionResponseMessage::new().add_embed(
-                    CreateEmbed::new()
-                        .title("⚠️ Activation Failed")
-                        .description("Failed to activate viagra. The pharmacy system is down.")
-                        .color(0xFF0000),
-                ),
-            );
-            return command.create_response(&ctx.http, builder).await;
-        }
+    .execute(&cmd.bot.db)
+    .await?
+    .rows_affected()
+        > 0;
+    if !claimed {
+        return reply_cooldown(cmd, next_available).await;
+    }
+
+    let event_note = match (event_hours, &event) {
+        (Some(_), Some(event)) => format!(" (🌍 {})", event.name),
+        _ => String::new(),
     };
 
-    // Calculate when effect ends
-    let effect_ends_unix =
-        chrono::Utc::now().timestamp() + Duration::hours(viagra_duration_hours).num_seconds();
-    let effect_ends_discord = format!("<t:{}:R>", effect_ends_unix);
-
-    // Calculate next viagra availability
-    let next_viagra_unix =
-        chrono::Utc::now().timestamp() + Duration::hours(VIAGRA_COOLDOWN_HOURS).num_seconds();
-    let next_viagra_discord = format!("<t:{}:R>", next_viagra_unix);
-    let event_text = active_event
-        .as_ref()
-        .and_then(|event| event.viagra_duration_hours().map(|_| event.name.clone()))
-        .map(|name| format!("\n• Global event active: **{}**", name))
-        .unwrap_or_default();
-
-    let builder = CreateInteractionResponse::Message(
-        CreateInteractionResponseMessage::new().add_embed(
-            CreateEmbed::new()
-                .title("💊 VIAGRA ACTIVATED! 🔥")
-                .description(format!(
-                    "You've taken the magical blue pill! 💎\n\n**Enhancement Details:**\n• +20% growth boost for all /grow commands\n• Effect duration: {} hours{}\n• Effect ends: {}\n\n**Next viagra available:** {}\n\nYour dick is now supercharged! Get growing! 🚀",
-                    viagra_duration_hours, event_text, effect_ends_discord, next_viagra_discord
-                ))
-                .color(0x3498DB) // Blue like viagra
-                .footer(CreateEmbedFooter::new(
-                    "Warning: Side effects may include uncontrollable confidence and swagger.",
-                ))
+    cmd.reply(
+        embed(
+            "💊 VIAGRA ACTIVATED! 🔥",
+            format!(
+                "You've taken the magical blue pill! 💎\n\n\
+                 • **+{BOOST_PERCENT}%** growth on every /grow\n\
+                 • Lasts **{duration_hours} hours**{event_note}, wears off {}\n\
+                 • Next dose available {}\n\n\
+                 Your dick is now supercharged! Get growing! 🚀",
+                time::relative(effect_ends),
+                time::relative(next_available)
+            ),
+            colors::INFO,
         )
-    );
-    return command.create_response(&ctx.http, builder).await;
+        .footer(CreateEmbedFooter::new(
+            "Warning: Side effects may include uncontrollable confidence and swagger.",
+        )),
+    )
+    .await
 }
 
-// Helper function to check if viagra is active for a user
-pub async fn is_viagra_active(bot: &Bot, user_id: &str, guild_id: &str) -> bool {
-    match sqlx::query!(
-        "SELECT viagra_active_until FROM dicks WHERE user_id = ? AND guild_id = ?",
-        user_id,
-        guild_id
+async fn reply_cooldown(cmd: &Cmd<'_>, ready: NaiveDateTime) -> CommandResult {
+    cmd.reply_ephemeral(
+        embed(
+            "🚫 Viagra Cooldown Active",
+            format!(
+                "Whoa there, speedster! Your body needs time to recover from the last enhancement session.\n\nNext dose available {}.",
+                time::relative(ready)
+            ),
+            colors::WARNING,
+        )
+        .footer(CreateEmbedFooter::new(
+            "Remember: Too much enhancement can lead to... complications.",
+        )),
     )
-    .fetch_optional(&bot.database)
     .await
-    {
-        Ok(Some(record)) => {
-            if let Some(active_until_str) = record.viagra_active_until
-                && let Ok(active_until) =
-                    NaiveDateTime::parse_from_str(&active_until_str, "%Y-%m-%d %H:%M:%S")
-            {
-                let now = chrono::Utc::now().naive_utc();
-                return now < active_until;
-            }
-            false
-        }
-        _ => false,
-    }
-}
-
-// Helper function to get viagra status for stats display
-pub async fn get_viagra_status(
-    bot: &Bot,
-    user_id: &str,
-    guild_id: &str,
-) -> (bool, Option<String>, Option<String>) {
-    match sqlx::query!(
-        "SELECT viagra_active_until, viagra_last_used FROM dicks WHERE user_id = ? AND guild_id = ?",
-        user_id,
-        guild_id
-    )
-    .fetch_optional(&bot.database)
-    .await
-    {
-        Ok(Some(record)) => {
-            let now = chrono::Utc::now().naive_utc();
-
-            // Check if currently active
-            let is_active = if let Some(active_until_str) = &record.viagra_active_until {
-                if let Ok(active_until) = NaiveDateTime::parse_from_str(active_until_str, "%Y-%m-%d %H:%M:%S") {
-                    now < active_until
-                } else {
-                    false
-                }
-            } else {
-                false
-            };
-
-            // Calculate next availability
-            let next_available = if let Some(last_used_str) = &record.viagra_last_used {
-                if let Ok(last_used) = NaiveDateTime::parse_from_str(last_used_str, "%Y-%m-%d %H:%M:%S") {
-                    let time_since_last = now - last_used;
-                    let cooldown_remaining = Duration::hours(VIAGRA_COOLDOWN_HOURS) - time_since_last;
-
-                    if cooldown_remaining > Duration::zero() {
-                        let unix_timestamp = chrono::Utc::now().timestamp() + cooldown_remaining.num_seconds();
-                        Some(format!("<t:{}:R>", unix_timestamp))
-                    } else {
-                        Some("Now".to_string())
-                    }
-                } else {
-                    None
-                }
-            } else {
-                Some("Now".to_string())
-            };
-
-            // Calculate when current effect ends (if active)
-            let effect_ends = if is_active {
-                if let Some(active_until_str) = &record.viagra_active_until {
-                    if let Ok(active_until) = NaiveDateTime::parse_from_str(active_until_str, "%Y-%m-%d %H:%M:%S") {
-                        let time_left = active_until - now;
-                        let unix_timestamp = chrono::Utc::now().timestamp() + time_left.num_seconds();
-                        Some(format!("<t:{}:R>", unix_timestamp))
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            } else {
-                None
-            };
-
-            (is_active, effect_ends, next_available)
-        }
-        _ => (false, None, Some("Now".to_string())),
-    }
 }

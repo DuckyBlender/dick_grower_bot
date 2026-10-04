@@ -1,3 +1,6 @@
 /target
 .git
 .gitignore
+.env
+*.sqlite*
+*.db*

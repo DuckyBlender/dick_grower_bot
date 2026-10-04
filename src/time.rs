@@ -1,33 +1,47 @@
-use chrono::{Duration, NaiveDateTime, Utc};
+use chrono::{Days, NaiveDateTime, Utc};
 
-// Combined function that checks for a new day and returns time until next reset
-pub fn check_utc_day_reset(last_time: &NaiveDateTime) -> Duration {
-    let now = Utc::now().naive_utc();
+/// Timestamp format used by every TEXT datetime column (same as SQLite's `datetime('now')`).
+const DB_FORMAT: &str = "%Y-%m-%d %H:%M:%S";
 
-    // Calculate time until next reset
-    let tomorrow = (Utc::now() + Duration::days(1))
-        .date_naive()
-        .and_hms_opt(0, 0, 0)
-        .unwrap();
-
-    let time_until_reset = tomorrow - now;
-    let has_passed = now.date() > last_time.date();
-    if has_passed {
-        Duration::zero()
-    } else {
-        time_until_reset
-    }
+pub fn now() -> NaiveDateTime {
+    Utc::now().naive_utc()
 }
 
-pub fn check_cooldown_with_minutes(last_time: &NaiveDateTime, cooldown_minutes: i64) -> Duration {
-    let now = Utc::now().naive_utc();
-    let duration = now - *last_time;
-    let threshold = Duration::minutes(cooldown_minutes);
+pub fn parse(value: &str) -> Option<NaiveDateTime> {
+    NaiveDateTime::parse_from_str(value, DB_FORMAT).ok()
+}
 
-    let has_passed = duration >= threshold;
-    if has_passed {
-        Duration::zero()
-    } else {
-        threshold - duration
+pub fn format(time: NaiveDateTime) -> String {
+    time.format(DB_FORMAT).to_string()
+}
+
+/// Discord relative timestamp, e.g. "in 5 minutes".
+pub fn relative(time: NaiveDateTime) -> String {
+    format!("<t:{}:R>", time.and_utc().timestamp())
+}
+
+pub fn next_utc_midnight() -> NaiveDateTime {
+    let tomorrow = Utc::now().date_naive() + Days::new(1);
+    tomorrow
+        .and_hms_opt(0, 0, 0)
+        .expect("midnight is a valid time")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn round_trips_db_format() {
+        let parsed = parse("2025-03-10 12:34:56").unwrap();
+        assert_eq!(format(parsed), "2025-03-10 12:34:56");
+        assert!(parse("garbage").is_none());
+    }
+
+    #[test]
+    fn next_midnight_is_in_the_future() {
+        let midnight = next_utc_midnight();
+        assert!(midnight > now());
+        assert_eq!(midnight.time(), chrono::NaiveTime::MIN);
     }
 }

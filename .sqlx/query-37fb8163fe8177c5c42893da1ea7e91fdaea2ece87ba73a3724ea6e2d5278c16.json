@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE dicks SET length = length + ?, dick_of_day_count = dick_of_day_count + 1\n         WHERE user_id = ? AND guild_id = ?\n         RETURNING length",
+  "describe": {
+    "columns": [
+      {
+        "name": "length",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "dicks",
+            "name": "length"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "37fb8163fe8177c5c42893da1ea7e91fdaea2ece87ba73a3724ea6e2d5278c16"
+}
