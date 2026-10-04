@@ -1,458 +1,328 @@
-use crate::Bot;
-use crate::commands::daily::{
-    consume_cooldown_skip, consume_daily_growth_boost_percent, consume_lucky_roll,
-    update_growth_streak,
-};
-use crate::commands::events::{add_to_community_pot, get_active_global_event};
-use crate::commands::viagra::is_viagra_active;
-use crate::time::check_cooldown_with_minutes;
-use crate::utils::{ordinal_suffix, pluralize};
-use chrono::NaiveDateTime;
-use log::{error, info};
+use crate::commands::events::{GlobalEvent, active_event, add_to_community_pot};
+use crate::commands::viagra;
+use crate::commands::{Cmd, CommandResult};
+use crate::db::{self, History};
+use crate::time;
+use crate::utils::{colors, embed, ordinal, pluralize};
+use chrono::{Days, Duration, NaiveDate, Utc};
 use rand::RngExt;
-use serenity::all::{
-    CommandInteraction, CreateEmbed, CreateEmbedFooter, CreateInteractionResponse,
-    CreateInteractionResponseMessage,
-};
-use serenity::prelude::*;
+use rand::seq::IndexedRandom;
+use serenity::all::{CreateCommand, CreateEmbedFooter};
+use sqlx::SqlitePool;
 
-const BASE_GROWTH_MIN_CM: i64 = 1;
-const BASE_GROWTH_MAX_CM: i64 = 10;
+const BASE_GROWTH_RANGE: (i64, i64) = (1, 10);
+pub const DEFAULT_COOLDOWN_MINUTES: i64 = 60;
+const MAX_STREAK_REWARD_CM: i64 = 5;
 
-async fn apply_streak_reward(bot: &Bot, user_id: &str, guild_id: &str, streak: i64) -> Option<i64> {
-    let reward = (1.0 + (streak as f64).ln() * 0.8).round() as i64;
-    let reward = reward.clamp(1, 5);
-    let now_str = chrono::Utc::now()
-        .naive_utc()
-        .format("%Y-%m-%d %H:%M:%S")
-        .to_string();
+const FOOTERS: &[&str] = &[
+    "Remember: it's not about the size, it's about... actually, it is about the size.",
+    "Your ruler is judging you.",
+    "Even tiny steps are still forward progress.",
+    "The pen is mighty, but the dick is mightier.",
+    "Grow slow, go low, stay low.",
+    "Nature hates a vacuum, but loves a full one.",
+    "A journey of a thousand miles begins with a single /grow.",
+    "With great length comes great responsibility.",
+    "You're doing great!",
+    "If you can measure it, you can improve it.",
+    "The early bird gets the worm. The big dick gets respect.",
+    "Rome wasn't built in a day, and neither was your dick.",
+    "Stay hungry, stay humble, stay growing.",
+    "What goes up must come down... eventually.",
+    "In a time of uncertainty, /grow.",
+    "Trust the process. Trust the gains.",
+    "Big things come to those who wait... and /grow daily.",
+    "The only bad measurement is no measurement.",
+    "Keep it between the sheets and in the database.",
+    "Your dick is a garden. Water it daily.",
+];
 
-    if let Err(why) = sqlx::query(
-        "UPDATE dicks
-         SET length = length + ?, streak_last_claimed = ?
-         WHERE user_id = ? AND guild_id = ?",
-    )
-    .bind(reward)
-    .bind(now_str)
-    .bind(user_id)
-    .bind(guild_id)
-    .execute(&bot.database)
-    .await
-    {
-        error!("Error applying automatic streak reward: {:?}", why);
-        return None;
-    }
-
-    Some(reward)
+pub fn cooldown_minutes(event: Option<&GlobalEvent>) -> i64 {
+    event
+        .and_then(GlobalEvent::grow_cooldown_minutes)
+        .unwrap_or(DEFAULT_COOLDOWN_MINUTES)
 }
 
-pub async fn handle_grow_command(
-    ctx: &Context,
-    command: &CommandInteraction,
-) -> Result<(), serenity::Error> {
-    let data = ctx.data.read().await;
-    let bot = data.get::<Bot>().unwrap();
+/// Logarithmic streak reward: 1 cm on day one, slowly rising to a cap.
+fn streak_reward(streak: i64) -> i64 {
+    ((1.0 + (streak as f64).ln() * 0.8).round() as i64).clamp(1, MAX_STREAK_REWARD_CM)
+}
 
-    let user_id = command.user.id.to_string();
-    let guild_id = command.guild_id.unwrap().to_string();
-    let mut cooldown_skip_used = false;
+pub fn register() -> CreateCommand {
+    CreateCommand::new("grow").description("Grow your cucumber")
+}
 
-    // Check if the user has grown today and get their stats
-    let _user_stats = match sqlx::query!(
-        "SELECT last_grow, length, growth_count FROM dicks WHERE user_id = ? AND guild_id = ?",
-        user_id,
-        guild_id
+pub async fn run(cmd: &Cmd<'_>) -> CommandResult {
+    let db = &cmd.bot.db;
+    db::ensure_user(db, &cmd.user, &cmd.guild).await?;
+
+    let event = active_event(cmd.bot).await?;
+    let cooldown = cooldown_minutes(event.as_ref());
+    let perks = sqlx::query!(
+        "SELECT daily_growth_boost_percent, daily_lucky_rolls, viagra_active_until
+         FROM dicks WHERE user_id = ? AND guild_id = ?",
+        cmd.user,
+        cmd.guild
     )
-    .fetch_optional(&bot.database)
-    .await
-    {
-        Ok(Some(record)) => {
-            let last_grow = NaiveDateTime::parse_from_str(&record.last_grow, "%Y-%m-%d %H:%M:%S")
-                .unwrap_or_default();
+    .fetch_one(db)
+    .await?;
 
-            let active_event = get_active_global_event(bot).await;
-            let cooldown_minutes = active_event
-                .as_ref()
-                .and_then(|event| event.grow_cooldown_minutes())
-                .unwrap_or(60);
-            let time_left = check_cooldown_with_minutes(&last_grow, cooldown_minutes);
-            // Format time_left into discord timestamp
-            let unix_timestamp = chrono::Utc::now().timestamp() + time_left.num_seconds();
-            let discord_timestamp = format!("<t:{}:R>", unix_timestamp);
-
-            if !time_left.is_zero() {
-                if consume_cooldown_skip(bot, &user_id, &guild_id).await {
-                    cooldown_skip_used = true;
-                } else {
-                    let builder = CreateInteractionResponse::Message(
-                    CreateInteractionResponseMessage::new()
-                        .add_embed(
-                            CreateEmbed::new()
-                                .title("🕒 Hold up, speedy!")
-                                .description(format!(
-                                    "You've already played with your dick today! Try again in {discord_timestamp}\n\nExcessive stimulation might cause injuries, you know?",
-                                ))
-                                .color(0xFF5733)
-                                .footer(CreateEmbedFooter::new(
-                                    "Patience is key... especially for your little buddy.",
-                                ))
-                        )
-                        .ephemeral(true)
-                );
-                    return command.create_response(&ctx.http, builder).await;
-                }
-            }
-
-            // Return user stats
-            (record.growth_count, record.length)
-        }
-        Ok(None) => {
-            // New user, create a record
-            info!(
-                "New user detected, adding user {} ({}) in guild id {} to database",
-                command.user.name, user_id, guild_id
-            );
-            match sqlx::query!(
-                "INSERT INTO dicks (user_id, guild_id, length, last_grow, growth_count, dick_of_day_count, 
-                                   pvp_wins, pvp_losses, pvp_max_streak, pvp_current_streak,
-                                   cm_won, cm_lost)
-                 VALUES (?, ?, 0, datetime('now'), 0, 0, 0, 0, 0, 0, 0, 0)",
-                user_id,
-                guild_id
-            )
-            .execute(&bot.database)
-            .await
-            {
-                Ok(_) => (),
-                Err(why) => {
-                    error!("Error creating user: {:?}", why);
-                }
-            };
-
-            // New user with 0 growth count
-            (0, 0)
-        }
-        Err(why) => {
-            error!("Database error: {:?}", why);
-            let builder = CreateInteractionResponse::Message(
-                CreateInteractionResponseMessage::new().add_embed(
-                    CreateEmbed::new()
-                        .title("⚠️ Database Error")
-                        .description(
-                            "Something went wrong with your dick growth. Maybe the universe is telling you something?",
-                        )
-                        .color(0xFF0000),
-                ),
-            );
-            return command.create_response(&ctx.http, builder).await;
-        }
-    };
-
-    let active_event = get_active_global_event(bot).await;
-
-    let (growth_min, growth_max) = active_event
+    let lucky_roll = perks.daily_lucky_rolls > 0;
+    let event_double_roll = event.as_ref().is_some_and(GlobalEvent::rolls_growth_twice);
+    let (min, max) = event
         .as_ref()
-        .and_then(|event| event.growth_range())
-        .unwrap_or((BASE_GROWTH_MIN_CM, BASE_GROWTH_MAX_CM));
-    let first_roll = rand::rng().random_range(growth_min..=growth_max);
-    let lucky_roll_active = consume_lucky_roll(bot, &user_id, &guild_id).await;
-    let event_double_roll = active_event
-        .as_ref()
-        .is_some_and(|event| event.rolls_growth_twice());
-    let base_growth = if lucky_roll_active || event_double_roll {
-        let second_roll = rand::rng().random_range(growth_min..=growth_max);
-        first_roll.max(second_roll)
-    } else {
-        first_roll
+        .and_then(GlobalEvent::growth_range)
+        .unwrap_or(BASE_GROWTH_RANGE);
+    let roll = {
+        let mut rng = rand::rng();
+        let first = rng.random_range(min..=max);
+        if lucky_roll || event_double_roll {
+            first.max(rng.random_range(min..=max))
+        } else {
+            first
+        }
     };
 
-    // Check if viagra is active for this user
-    let viagra_active = is_viagra_active(bot, &user_id, &guild_id).await;
-    let daily_boost_percent = consume_daily_growth_boost_percent(bot, &user_id, &guild_id).await;
-
-    let mut multiplier = 1.0;
-    let mut boost_notes = Vec::new();
-
-    if cooldown_skip_used {
-        boost_notes.push("⏩ Cooldown skip".to_string());
+    let mut boosts = Vec::new();
+    let mut bonus_percent = 0;
+    if lucky_roll {
+        boosts.push("🍀 Lucky roll".to_string());
+    }
+    if viagra::active_until(perks.viagra_active_until.as_deref()).is_some() {
+        bonus_percent += viagra::BOOST_PERCENT;
+        boosts.push(format!("💊 Viagra +{}%", viagra::BOOST_PERCENT));
+    }
+    if perks.daily_growth_boost_percent > 0 {
+        bonus_percent += perks.daily_growth_boost_percent;
+        boosts.push(format!("⚡ Daily +{}%", perks.daily_growth_boost_percent));
+    }
+    if let Some(event) = &event {
+        if event_double_roll {
+            boosts.push(format!("🌍 {} (double roll)", event.name));
+        }
+        if let Some(percent) = event.growth_bonus_percent() {
+            bonus_percent += percent;
+            boosts.push(format!("🌍 {} +{percent}%", event.name));
+        }
     }
 
-    if lucky_roll_active {
-        boost_notes.push("🍀 Lucky roll".to_string());
-    }
-
-    if event_double_roll && let Some(event) = active_event.as_ref() {
-        boost_notes.push(format!("🌍 {}", event.name));
-    }
-
-    if viagra_active {
-        multiplier += 0.20;
-        boost_notes.push("💊 Viagra +20%".to_string());
-    }
-
-    if let Some(percent) = daily_boost_percent {
-        multiplier += percent as f64 / 100.0;
-        boost_notes.push(format!("⚡ Daily +{}%", percent));
-    }
-
-    if let Some(event) = active_event.as_ref()
-        && let Some(event_multiplier) = event.growth_multiplier()
-    {
-        multiplier += event_multiplier - 1.0;
-        boost_notes.push(format!("🌍 {} +{}%", event.name, event.bonus_value));
-    }
-
-    let mut growth = if multiplier > 1.0 {
-        let boosted = (base_growth as f64 * multiplier).round() as i64;
-        info!(
-            "User {} growth boosted from {} to {} with multiplier {:.2}",
-            user_id, base_growth, boosted, multiplier
-        );
-        boosted
-    } else {
-        base_growth
-    };
-
-    if let Some(event) = active_event.as_ref()
-        && let Some(jackpot) = event.jackpot_extra_cm()
-    {
+    let mut growth = (roll as f64 * (100 + bonus_percent) as f64 / 100.0).round() as i64;
+    if let Some(jackpot) = event.as_ref().and_then(GlobalEvent::roll_jackpot) {
         growth += jackpot;
-        boost_notes.push(format!("🌍 {} +{} cm", event.name, jackpot));
+        boosts.push(format!("🎰 Jackpot +{jackpot} cm"));
     }
 
-    // Update the database - increment growth count too
-    match sqlx::query!(
-        "UPDATE dicks SET length = length + ?, last_grow = datetime('now'), growth_count = growth_count + 1
-         WHERE user_id = ? AND guild_id = ?",
+    // The cooldown check and the growth are a single statement, so spamming /grow can't
+    // sneak in extra growths. One-shot perks are consumed in the same statement.
+    let lucky_used = i64::from(lucky_roll);
+    let cooldown_modifier = format!("-{cooldown} minutes");
+    let mut new_length = sqlx::query_scalar!(
+        "UPDATE dicks
+         SET length = length + ?, last_grow = datetime('now'), growth_count = growth_count + 1,
+             daily_growth_boost_percent = 0, daily_lucky_rolls = MAX(daily_lucky_rolls - ?, 0)
+         WHERE user_id = ? AND guild_id = ? AND last_grow <= datetime('now', ?)
+         RETURNING length",
         growth,
-        user_id,
-        guild_id
+        lucky_used,
+        cmd.user,
+        cmd.guild,
+        cooldown_modifier
     )
-    .execute(&bot.database)
-    .await
-    {
-        Ok(_) => (),
-        Err(why) => {
-            error!("Error updating length: {:?}", why);
-            let builder = CreateInteractionResponse::Message(
-                CreateInteractionResponseMessage::new().add_embed(
-                    CreateEmbed::new()
-                        .title("⚠️ Growth Error")
-                        .description("Your dick refused to cooperate with the database.")
-                        .color(0xFF0000),
-                ),
-            );
-            return command.create_response(&ctx.http, builder).await;
-        }
-    };
+    .fetch_optional(db)
+    .await?;
 
-    if let Some(event) = active_event.as_ref()
-        && let Some(pot_amount) = event.community_pot_cm_per_grow()
-    {
-        add_to_community_pot(bot, event.id, pot_amount).await;
-        boost_notes.push(format!("🌍 {} pot +{} cm", event.name, pot_amount));
-    }
-
-    // Get new length
-    let new_length = match sqlx::query!(
-        "SELECT length FROM dicks WHERE user_id = ? AND guild_id = ?",
-        user_id,
-        guild_id
-    )
-    .fetch_one(&bot.database)
-    .await
-    {
-        Ok(record) => record.length,
-        Err(why) => {
-            error!("Error fetching length: {:?}", why);
-            let builder = CreateInteractionResponse::Message(
-                CreateInteractionResponseMessage::new().add_embed(
-                    CreateEmbed::new()
-                        .title("⚠️ Length Measurement Error")
-                        .description(
-                            "We couldn't measure your updated length. The measuring tape broke.",
-                        )
-                        .color(0xFF0000),
-                ),
-            );
-            return command.create_response(&ctx.http, builder).await;
-        }
-    };
-
-    // Log the growth in length_history
-    if let Err(why) = sqlx::query!(
-        "INSERT INTO length_history (user_id, guild_id, length, growth_amount, growth_type)
-         VALUES (?, ?, ?, ?, 'grow')",
-        user_id,
-        guild_id,
-        new_length,
-        growth
-    )
-    .execute(&bot.database)
-    .await
-    {
-        error!("Error logging growth history: {:?}", why);
-    }
-
-    let mut new_length = new_length;
-    if let Some(streak_update) = update_growth_streak(bot, &user_id, &guild_id).await {
-        if streak_update.used_streak_saver {
-            boost_notes.push("🛟 Streak saver".to_string());
-        }
-
-        if let Some(streak_reward) =
-            apply_streak_reward(bot, &user_id, &guild_id, streak_update.streak).await
-        {
-            boost_notes.push(format!(
-                "🔥 {} streak +{} cm",
-                pluralize(streak_update.streak, "day", "days"),
-                streak_reward
-            ));
-
-            new_length += streak_reward;
-
-            if let Err(why) = sqlx::query!(
-                "INSERT INTO length_history (user_id, guild_id, length, growth_amount, growth_type)
-                 VALUES (?, ?, ?, ?, 'streak')",
-                user_id,
-                guild_id,
-                new_length,
-                streak_reward
-            )
-            .execute(&bot.database)
-            .await
-            {
-                error!("Error logging automatic streak reward: {:?}", why);
-            }
+    if new_length.is_none() {
+        new_length = sqlx::query_scalar!(
+            "UPDATE dicks
+             SET length = length + ?, last_grow = datetime('now'), growth_count = growth_count + 1,
+                 daily_growth_boost_percent = 0, daily_lucky_rolls = MAX(daily_lucky_rolls - ?, 0),
+                 daily_cooldown_skips = daily_cooldown_skips - 1
+             WHERE user_id = ? AND guild_id = ? AND daily_cooldown_skips > 0
+             RETURNING length",
+            growth,
+            lucky_used,
+            cmd.user,
+            cmd.guild
+        )
+        .fetch_optional(db)
+        .await?;
+        if new_length.is_some() {
+            boosts.insert(0, "⏩ Cooldown skip".to_string());
         }
     }
 
-    // Get user position in server top
-    let position = match sqlx::query!(
-        "SELECT COUNT(*) as pos FROM dicks WHERE guild_id = ? AND length > ?",
-        guild_id,
-        new_length
-    )
-    .fetch_one(&bot.database)
-    .await
-    {
-        Ok(record) => record.pos + 1,
-        Err(_) => {
-            error!("Error fetching position");
-            0
-        }
+    let Some(mut new_length) = new_length else {
+        return reply_on_cooldown(cmd, cooldown).await;
     };
-    let position = position as usize; // Safe to cast to usize
+    db::log_history(db, &cmd.user, &cmd.guild, new_length, growth, History::Grow).await?;
 
-    // Calculate next grow time (cooldown)
-    let last_grow = chrono::Utc::now();
-    let cooldown_minutes = active_event
-        .as_ref()
-        .and_then(|event| event.grow_cooldown_minutes())
-        .unwrap_or(60);
-    let next_grow_unix = (last_grow + chrono::Duration::minutes(cooldown_minutes)).timestamp();
-    let next_grow_discord = format!("<t:{}:R>", next_grow_unix);
+    if let Some(event) = &event
+        && let Some(amount) = event.community_pot_cm_per_grow()
+    {
+        add_to_community_pot(cmd.bot, event.id, amount).await?;
+        boosts.push(format!("🏺 {} pot +{amount} cm", event.name));
+    }
 
-    // Add boost indicators
-    let boost_text = if boost_notes.is_empty() {
+    if let Some(streak) = advance_streak(db, &cmd.user, &cmd.guild).await? {
+        if streak.used_saver {
+            boosts.push("🛟 Streak saver".to_string());
+        }
+        boosts.push(format!(
+            "🔥 {} streak +{} cm",
+            pluralize(streak.days, "day", "days"),
+            streak.reward
+        ));
+        new_length = streak.new_length;
+    }
+
+    let rank = db::guild_rank(db, &cmd.guild, new_length).await?;
+    let next_grow = time::now() + Duration::minutes(cooldown);
+
+    let (title, flavor, color) = match growth {
+        11.. => (
+            "🚀 INCREDIBLE GROWTH!",
+            "Careful, you might trip over it soon!",
+            0x00FF00,
+        ),
+        8..=10 => (
+            "🔥 Impressive Growth!",
+            "Keep up the good work, size king!",
+            0x33FF33,
+        ),
+        4..=7 => ("🌱 Solid Growth", "Every centimeter counts!", 0x66FF66),
+        _ => (
+            "📏 Modest Growth",
+            "Small steps lead to big achievements!",
+            0x99FF99,
+        ),
+    };
+    let boosts = if boosts.is_empty() {
         String::new()
     } else {
-        format!(" **({})**", boost_notes.join(", "))
+        format!("\n**Boosts:** {}", boosts.join(" · "))
     };
+    let footer = *FOOTERS
+        .choose(&mut rand::rng())
+        .expect("footers are not empty");
 
-    // Create response with funny messages based on growth
-    let (title, description, color) = if growth > 10 {
-        (
-            "🚀 INCREDIBLE GROWTH!",
+    cmd.reply(
+        embed(
+            title,
             format!(
-                "Holy moly! Your dick just grew by **{} cm**{} and is now a whopping **{} cm** long!\nYou are currently **{}{}** in the server.\n\nNext attempt: {}\n\nCareful, you might trip over it soon!",
-                growth,
-                boost_text,
-                new_length,
-                position,
-                ordinal_suffix(position),
-                next_grow_discord
+                "Your dick grew by **+{growth} cm** and is now **{new_length} cm** long!{boosts}\n\n\
+                 🏅 Server rank: **{}**\n\
+                 ⏰ Next grow: {}\n\n\
+                 *{flavor}*",
+                ordinal(rank),
+                time::relative(next_grow)
             ),
-            0x00FF00, // Bright green
+            color,
         )
-    } else if growth > 7 {
-        (
-            "🔥 Impressive Growth!",
+        .footer(CreateEmbedFooter::new(footer)),
+    )
+    .await
+}
+
+async fn reply_on_cooldown(cmd: &Cmd<'_>, cooldown: i64) -> CommandResult {
+    let last_grow = sqlx::query_scalar!(
+        "SELECT last_grow FROM dicks WHERE user_id = ? AND guild_id = ?",
+        cmd.user,
+        cmd.guild
+    )
+    .fetch_one(&cmd.bot.db)
+    .await?;
+    let ready = time::parse(&last_grow).unwrap_or_else(time::now) + Duration::minutes(cooldown);
+
+    cmd.reply_ephemeral(
+        embed(
+            "🕒 Hold up, speedy!",
             format!(
-                "Nice! Your dick grew by **{} cm**{}! Your new length is **{} cm**.\nYou are currently **{}{}** in the server's leaderboard.\n\nNext attempt: {}\n\nKeep up the good work, size king!",
-                growth,
-                boost_text,
-                new_length,
-                position,
-                ordinal_suffix(position),
-                next_grow_discord
+                "You've already played with your dick recently! Try again {}.\n\nExcessive stimulation might cause injuries, you know?",
+                time::relative(ready)
             ),
-            0x33FF33, // Green
+            colors::WARNING,
         )
-    } else if growth > 3 {
-        (
-            "🌱 Solid Growth",
-            format!(
-                "A good **{} cm** added{}! You're now at **{} cm**.\nYou are currently **{}{}** in the server.\n\nNext attempt: {}\n\nEvery centimeter counts!",
-                growth,
-                boost_text,
-                new_length,
-                position,
-                ordinal_suffix(position),
-                next_grow_discord
-            ),
-            0x66FF66, // Light green
-        )
+        .footer(CreateEmbedFooter::new(
+            "Tip: /daily can give you a cooldown skip.",
+        )),
+    )
+    .await
+}
+
+struct StreakUpdate {
+    days: i64,
+    reward: i64,
+    used_saver: bool,
+    new_length: i64,
+}
+
+/// Advances the daily growth streak on the first grow of each UTC day and pays its reward.
+async fn advance_streak(
+    db: &SqlitePool,
+    user_id: &str,
+    guild_id: &str,
+) -> sqlx::Result<Option<StreakUpdate>> {
+    let row = sqlx::query!(
+        "SELECT daily_streak, last_streak_date, daily_streak_savers
+         FROM dicks WHERE user_id = ? AND guild_id = ?",
+        user_id,
+        guild_id
+    )
+    .fetch_one(db)
+    .await?;
+
+    let today = Utc::now().date_naive();
+    let last_date = row
+        .last_streak_date
+        .as_deref()
+        .and_then(|date| NaiveDate::parse_from_str(date, "%Y-%m-%d").ok());
+    if last_date == Some(today) {
+        return Ok(None);
+    }
+
+    let continues = last_date == today.checked_sub_days(Days::new(1));
+    let used_saver = !continues
+        && last_date == today.checked_sub_days(Days::new(2))
+        && row.daily_streak > 0
+        && row.daily_streak_savers > 0;
+    let days = if continues || used_saver {
+        row.daily_streak + 1
     } else {
-        (
-            "📏 Modest Growth",
-            format!(
-                "A small but positive **{} cm** added{}. You're now at **{} cm**.\nYou are currently **{}{}** in the server.\n\nNext attempt: {}\n\nSmall steps lead to big achievements!",
-                growth,
-                boost_text,
-                new_length,
-                position,
-                ordinal_suffix(position),
-                next_grow_discord
-            ),
-            0x99FF99, // Lighter green
-        )
+        1
+    };
+    let reward = streak_reward(days);
+    let today_str = today.format("%Y-%m-%d").to_string();
+    let saver_used = i64::from(used_saver);
+
+    let new_length = sqlx::query_scalar!(
+        "UPDATE dicks
+         SET daily_streak = ?, best_daily_streak = MAX(best_daily_streak, ?),
+             last_streak_date = ?, streak_last_claimed = datetime('now'),
+             daily_streak_savers = daily_streak_savers - ?, length = length + ?
+         WHERE user_id = ? AND guild_id = ? AND last_streak_date IS NOT ?
+         RETURNING length",
+        days,
+        days,
+        today_str,
+        saver_used,
+        reward,
+        user_id,
+        guild_id,
+        today_str
+    )
+    .fetch_optional(db)
+    .await?;
+    let Some(new_length) = new_length else {
+        return Ok(None);
     };
 
-    const FOOTERS: &[&str] = &[
-        "Remember: it's not about the size, it's about... actually, it is about the size.",
-        "Your ruler is judging you.",
-        "Even tiny steps are still forward progress.",
-        "The pen is mighty, but the dick is mightier.",
-        "Grow slow, go low, stay low.",
-        "Nature hates a vacuum, but loves a full one.",
-        "A journey of a thousand miles begins with a single /grow.",
-        "With great length comes great responsibility.",
-        "You're doing great!",
-        "If you can measure it, you can improve it.",
-        "The early bird gets the worm. The big dick gets respect.",
-        "Rome wasn't built in a day, and neither was your dick.",
-        "Stay hungry, stay humble, stay growing.",
-        "What goes up must come down... eventually.",
-        "In a time of uncertainty, /grow.",
-        "Trust the process. Trust the gains.",
-        "Big things come to those who wait... and /grow daily.",
-        "The only bad measurement is no measurement.",
-        "Keep it between the sheets and in the database.",
-        "Your dick is a garden. Water it daily.",
-    ];
-    let footer = FOOTERS[rand::rng().random_range(0..FOOTERS.len())];
-
-    let builder = CreateInteractionResponse::Message(
-        CreateInteractionResponseMessage::new().add_embed(
-            CreateEmbed::new()
-                .title(title)
-                .description(description)
-                .color(color)
-                .footer(CreateEmbedFooter::new(footer)),
-        ),
-    );
-    return command.create_response(&ctx.http, builder).await;
+    db::log_history(db, user_id, guild_id, new_length, reward, History::Streak).await?;
+    Ok(Some(StreakUpdate {
+        days,
+        reward,
+        used_saver,
+        new_length,
+    }))
 }
 
 #[cfg(test)]
@@ -460,7 +330,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_streak_reward_curve() {
+    fn streak_reward_curve() {
         let cases = [
             (1, 1),
             (3, 2),
@@ -469,30 +339,10 @@ mod tests {
             (30, 4),
             (60, 4),
             (100, 5),
+            (1000, 5),
         ];
         for (streak, expected) in cases {
-            let reward = (1.0 + (streak as f64).ln() * 0.8).round() as i64;
-            let reward = reward.clamp(1, 5);
-            assert_eq!(reward, expected, "streak {} expected {} got {}", streak, expected, reward);
+            assert_eq!(streak_reward(streak), expected, "streak {streak}");
         }
-    }
-
-    #[test]
-    fn test_growth_distribution() {
-        const ITERATIONS: usize = 10000;
-
-        let mut values = Vec::new();
-        for _ in 0..ITERATIONS {
-            let growth = rand::rng().random_range(BASE_GROWTH_MIN_CM..=BASE_GROWTH_MAX_CM);
-            values.push(growth);
-        }
-
-        let avg = values.iter().sum::<i64>() as f64 / ITERATIONS as f64;
-        let min = values.iter().min().unwrap();
-        let max = values.iter().max().unwrap();
-
-        assert_eq!(*min, BASE_GROWTH_MIN_CM);
-        assert_eq!(*max, BASE_GROWTH_MAX_CM);
-        assert!((avg - 5.5).abs() < 0.3, "Average should be around 5.5");
     }
 }

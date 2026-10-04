@@ -1,0 +1,74 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id as \"id!\", name, pot_amount, started_at, ends_at\n         FROM global_events\n         WHERE event_type = 'community_pot'\n           AND ends_at <= datetime('now')\n           AND resolved_at IS NULL\n         ORDER BY ends_at ASC\n         LIMIT 1",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "global_events",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "name",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "global_events",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "name": "pot_amount",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "global_events",
+            "name": "pot_amount"
+          }
+        }
+      },
+      {
+        "name": "started_at",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "global_events",
+            "name": "started_at"
+          }
+        }
+      },
+      {
+        "name": "ends_at",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "global_events",
+            "name": "ends_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "f1d2cc970212a905384093742f2570c8526ea249d4caec3b40bd1320d8462c7e"
+}

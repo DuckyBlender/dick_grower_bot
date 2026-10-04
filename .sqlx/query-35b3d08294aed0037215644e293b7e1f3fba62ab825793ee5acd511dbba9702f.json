@@ -1,16 +1,16 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT length FROM dicks WHERE user_id = ? AND guild_id = ?",
+  "query": "SELECT last_grow FROM dicks WHERE user_id = ? AND guild_id = ?",
   "describe": {
     "columns": [
       {
-        "name": "length",
+        "name": "last_grow",
         "ordinal": 0,
-        "type_info": "Integer",
+        "type_info": "Text",
         "origin": {
           "Table": {
             "table": "dicks",
-            "name": "length"
+            "name": "last_grow"
           }
         }
       }
@@ -22,5 +22,5 @@
       false
     ]
   },
-  "hash": "7bfdfd02d16691587dad63ef1354e349d7f4af24065bd530fb0e413f0cf8f192"
+  "hash": "35b3d08294aed0037215644e293b7e1f3fba62ab825793ee5acd511dbba9702f"
 }

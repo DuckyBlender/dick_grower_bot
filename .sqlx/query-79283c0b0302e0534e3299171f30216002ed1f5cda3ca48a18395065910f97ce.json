@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE guild_settings SET last_dotd = datetime('now')\n         WHERE guild_id = ? AND date(last_dotd) < date('now')",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "79283c0b0302e0534e3299171f30216002ed1f5cda3ca48a18395065910f97ce"
+}

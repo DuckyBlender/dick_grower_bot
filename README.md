@@ -1,178 +1,129 @@
 # 🍆 Dick Grower Bot
 
-A Discord bot where users compete to grow the biggest virtual dick in their server! Built with Rust using Serenity and SQLx.
+A Discord bot where users compete to grow the biggest virtual dick in their server. Built in Rust with [Serenity](https://github.com/serenity-rs/serenity) and [SQLx](https://github.com/launchbadge/sqlx) on SQLite.
 
-## Features
+## Commands
 
-### Core Commands
-- **`/grow`** - Grow your dick once per hour (always positive growth!)
-- **`/top`** - View the server's dick leaderboard
-- **`/global`** - View the global dick leaderboard across all servers
-- **`/stats <user>`** - View detailed dick statistics
-- **`/help`** - Show command help
-- **`/daily`** - Claim a once-a-day random perk
-- **`/events`** - Start or view the current global growth event
-
-### Battle System
-- **`/pvp <bet>`** - Challenge others to dick battles with cm bets
-- Interactive button-based acceptance system
-- Win streaks and battle statistics tracking
-- Risk vs reward betting mechanics
-
-### Social Features
-- **`/gift <user> <amount>`** - Gift some of your length to another user
-- **`/dickoftheday`** - Random daily Dick of the Day selection with bonuses
-- Length sharing and generosity mechanics
-
-### Enhancement System
-- **`/viagra`** - Boost your growth by 20% for 6 hours (20 hour cooldown)
-- **Daily rewards** - Random daily bonus cm, one-shot growth boosts, cooldown skips, streak savers, or lucky rolls
-- **Growth streaks** - Consecutive daily growth builds streak rewards shown in `/stats`
-- **Global events** - Shared event windows affect every server at once
-- Temporary performance enhancement
-- Strategic timing for maximum gains
-
-## Technical Features
-
-### Database Design
-- **Optimized queries** with proper indexing
-- **Length history tracking** - Logs all growth events over time
-- **Guild-specific data** - Each server has its own leaderboards
-- **Comprehensive statistics** - PVP records, growth counts, etc.
-
-### Performance Optimizations
-- **Guild name caching** - Server names cached for 12 hours to reduce API calls
-- **Single-query leaderboards** - Optimized `/top` command performance
-- **Efficient ranking** calculations
-
-### Data Integrity
-- **Database transactions** for gift transfers
-- **User validation** and error handling
-- **Automatic user creation** for new participants
-
-## Commands Reference
+All commands work in servers only. Each server has its own leaderboard and stats.
 
 | Command | Description | Cooldown |
 |---------|-------------|----------|
-| `/grow` | Grow your dick (1-10cm, +20% with viagra) | 60 minutes |
-| `/top` | Server leaderboard | None |
-| `/global` | Global leaderboard | None |
-| `/pvp <bet>` | Dick battle with cm betting | None |
-| `/stats <user>` | View user statistics | None |
-| `/dickoftheday` | Random daily winner selection | 24 hours |
-| `/gift <user> <amount>` | Transfer length to another user | None |
-| `/viagra` | 20% growth boost for 6 hours | 20 hours |
-| `/daily` | Random daily perk | Daily UTC reset |
-| `/events` | View active event or roll a 50% chance to start one | One active event at a time |
-| `/help` | Show command help | None |
+| `/grow` | Grow 1-10 cm, plus any active boosts | 60 minutes |
+| `/daily` | Claim a random perk | Once per UTC day |
+| `/viagra` | +20% growth for 6 hours | 20 hours |
+| `/event` | Show the current global event, or when the next one may start | None |
+| `/pvp <bet>` | Open a dick battle anyone can accept | None |
+| `/gift <user> <amount>` | Give some of your length to someone else | None |
+| `/dickoftheday` | Award 10-25 cm to a random active grower | Once per server per UTC day |
+| `/stats [user]` | Length, rank, streaks, perks, viagra and battle stats | None |
+| `/top` | Server top 10, plus your own position | None |
+| `/global` | Global top 10 across all servers | None |
+| `/help` | Command overview | None |
 
-## Growth Mechanics
+## Game Mechanics
 
-### Base Growth
-- **Range**: 1-10 cm per growth
-- **Frequency**: Once per hour
-- **Always positive** - No more shrinkage!
+### Growing
+- `/grow` adds 1-10 cm and is always positive.
+- Percentage boosts (viagra, daily boost, Growth Surge event) are added together and applied to the roll.
+- The reply shows your new length, server rank, every boost that applied and when you can grow next.
 
-### Viagra Enhancement
-- **Boost**: +20% to base growth
-- **Duration**: 6 hours
-- **Cooldown**: 20 hours
-- **Visual indicator** in growth messages
+### Daily Perks
+`/daily` gives one random perk, each equally likely:
+- **Bonus cm**: 5-15 cm straight away
+- **Growth boost**: your next `/grow` gets +50%
+- **Cooldown skip**: your next `/grow` while on cooldown ignores the cooldown
+- **Streak saver**: one missed UTC day doesn't break your growth streak
+- **Lucky roll**: your next `/grow` rolls twice and keeps the better result
 
-### Daily Rewards
-- **Bonus cm**: Immediate random length bonus
-- **Next growth boost**: One-shot +50% `/grow` bonus
-- **Cooldown skip**: One on-cooldown `/grow` can ignore cooldown
-- **Streak saver**: One missed UTC day does not break your daily growth streak
-- **Lucky roll**: Your next `/grow` rolls twice and keeps the better result
-- **Reset**: Once per UTC day
+Unused perks are listed under 🎒 Perks in `/stats`.
 
-### Streak Rewards
-- **Tracked by growth**: The first `/grow` on each UTC day advances the streak
-- **Reward**: `/grow` automatically grants cm based on your current streak once per UTC day
-- **Stats**: Current and best daily streak are shown in `/stats`
+### Growth Streaks
+- Your first `/grow` of each UTC day continues your streak; missing a day resets it to 1 (unless you have a streak saver).
+- Each streak day also gives bonus cm, rising slowly from 1 cm up to a maximum of 5 cm.
 
 ### Global Events
-- **Growth Surge**: +25% growth for everyone
-- **Fast Hands**: Lowers `/grow` cooldown to 30 minutes
-- **Extended Pharmacy Hours**: New `/viagra` activations last 12 hours
-- **Double Trouble**: `/grow` rolls twice and keeps the better result
-- **Quick Sprouts**: `/grow` becomes smaller but faster: 1-5 cm every 15 minutes
-- **Jackpot Window**: `/grow` has a chance to add a flat jackpot bonus
-- **Community Pump**: Each `/grow` adds to a global pot awarded by `/events` after the event ends
-- **Activation**: If no event is active, `/events` has a 50% chance to start one
-- **Scope**: Events are global across all servers, not per-server
+Every 4 hours, on the UTC boundary (00:00, 04:00, ...), there is a 50% chance that an event starts. It lasts until the next boundary and applies to every server.
 
-### Special Events
-- **Dick of the Day**: 10-25 cm bonus (daily)
-- **PVP Victories**: Win opponent's bet amount
-- **Gifts**: Receive length from generous users
-- **Daily and streak rewards**: Extra cm and temporary growth boosts
+| Event | Effect |
+|-------|--------|
+| Growth Surge | +25% growth |
+| Fast Hands | `/grow` cooldown drops to 30 minutes |
+| Extended Pharmacy Hours | New `/viagra` doses last 12 hours |
+| Double Trouble | Every `/grow` rolls twice and keeps the better result |
+| Quick Sprouts | `/grow` gives 1-5 cm but has a 15 minute cooldown |
+| Jackpot Window | Each `/grow` has a 1 in 10 chance of +25 cm |
+| Community Pump | Each `/grow` adds 1 cm to a global pot. When the event ends, the pot goes to one random person who grew during it |
 
-## Database Schema
+The bot's status shows the active event.
 
-### Main Tables
-- `dicks` - User data, lengths, stats, viagra status
-- `length_history` - Growth tracking over time
-- `guild_settings` - Server-specific settings
-- `global_events` - Active and historical global event windows
+### Dick Battles
+- `/pvp <bet>` posts a challenge with **Accept** and **Cancel** buttons. It expires after 24 hours.
+- Both players roll 1-100. The higher roll takes the bet; a tie returns everything.
+- Both players must be able to cover the bet when the battle resolves.
+- You can only have one open challenge. Starting a new one cancels the old one.
 
-### Growth Types Tracked
-- `grow` - Regular hourly growth
-- `gift_sent` / `gift_received` - Length transfers
-- `pvp_won` / `pvp_lost` - Battle results  
-- `dotd` - Dick of the Day bonuses
-- `daily_bonus` - Daily bonus cm
-- `streak` - Consecutive daily growth reward
-- `community_pot` - Global community pot payout
+### Dick of the Day
+- Anyone can run `/dickoftheday` once per server per UTC day.
+- It picks a random user who has grown in the last 7 days. At least 2 such users are needed.
+
+## Setup
+
+### Requirements
+- Rust 1.94+
+- A Discord bot token. The bot only needs the `GUILDS` intent.
+- [`sqlx-cli`](https://crates.io/crates/sqlx-cli) to create the database: `cargo install sqlx-cli --no-default-features --features sqlite`
+
+### Running Locally
+```bash
+cp .env.example .env               # then fill in DISCORD_TOKEN
+sqlx database create
+sqlx migrate run
+cargo run --release
+```
+
+On startup the bot adds any columns that are missing from older databases. It does not create tables, so run `sqlx migrate run` for a new database.
+
+### Docker Deployment
+`deploy.sh` pulls the latest code and builds the image. If the build succeeds, it stops the old container, backs up `database.sqlite` (keeping the 10 newest backups) and starts the new container. `.env` is passed at runtime and is never copied into the image.
+
+```bash
+./deploy.sh
+```
 
 ## Development
 
-### Prerequisites
-- Rust 1.70+
-- SQLite 3
-- Discord Bot Token
+### Database Queries
+Queries are checked at compile time with `sqlx::query!`. The `.sqlx/` directory stores query metadata so the project builds without a database (`SQLX_OFFLINE=true`, which the Dockerfile sets). After changing a query, regenerate it:
 
-### Setup
-1. Clone the repository
-2. Copy `.env.example` to `.env` and configure
-3. Run `cargo run` to start the bot
-4. Migrations run automatically on startup
+```bash
+export DATABASE_URL=sqlite:dev.sqlite
+sqlx database create && sqlx migrate run
+cargo sqlx prepare -- --all-targets
+```
 
-### Database Migrations
-Located in `migrations/` directory:
-- `20250309235354_initialize.sql` - Core tables
-- `20250310000000_add_features.sql` - New features (viagra, history, caching)
-- `20260426233000_add_daily_streaks_events.sql` - Daily rewards, streaks, global events
+### Checks
+```bash
+cargo fmt --check
+cargo clippy --all-targets -- -D warnings
+cargo test
+```
 
-## Features Implemented
+### Project Layout
+```
+src/
+├── main.rs          # Startup, interaction routing, background scheduler
+├── db.rs            # Schema upgrades and shared queries (users, ranks, history)
+├── time.rs          # Timestamp parsing/formatting and Discord timestamps
+├── utils.rs         # Embed helpers, colors and text formatting
+└── commands/        # One module per slash command (register + run)
+migrations/          # SQLx migrations
+```
 
-### Recent Updates
-✅ **Gift System** - Users can transfer length to others  
-✅ **Viagra Enhancement** - Temporary growth boosts  
-✅ **Positive-Only Growth** - Removed negative growth mechanics  
-✅ **Length History Logging** - Track all growth events  
-✅ **Optimized Leaderboards** - Better query performance  
-✅ **Guild Name Caching** - Reduced API calls for global leaderboard  
-✅ **Daily Rewards** - Random daily perks and cm bonuses  
-✅ **Growth Streaks** - Consecutive daily growth rewards in `/grow` and `/stats`  
-✅ **Global Events** - Shared bonus windows across every server  
-
-### Battle System
-✅ **PVP Challenges** with betting  
-✅ **Win Streak Tracking**  
-✅ **Interactive Buttons**  
-✅ **Risk/Reward Mechanics**  
-
-### Statistics & Tracking
-✅ **Comprehensive User Stats**  
-✅ **Server Rankings**  
-✅ **Global Leaderboards**  
-✅ **Growth History**  
-
-## Bot Invite
-
-[Add to your server](YOUR_BOT_INVITE_LINK_HERE)
+### Database Schema
+- `dicks`: one row per user per server, holding length, stats, perks, streaks and viagra state
+- `length_history`: every length change, with `growth_type` set to `grow`, `streak`, `daily_bonus`, `dotd`, `gift_sent`, `gift_received`, `pvp_won`, `pvp_lost` or `community_pot`
+- `guild_settings`: per-server state (last Dick of the Day)
+- `global_events`: past and current global events, including community pot payouts
 
 ## Community
 

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE dicks SET daily_last_claimed = datetime('now')\n         WHERE user_id = ? AND guild_id = ?\n           AND (daily_last_claimed IS NULL OR date(daily_last_claimed) < date('now'))",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "22fce3b2aff26ee3dc0d5fc358eb1d96aa9cf1bc6127d529b92e084d9f2b94ba"
+}

@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE dicks\n         SET daily_streak = ?, best_daily_streak = MAX(best_daily_streak, ?),\n             last_streak_date = ?, streak_last_claimed = datetime('now'),\n             daily_streak_savers = daily_streak_savers - ?, length = length + ?\n         WHERE user_id = ? AND guild_id = ? AND last_streak_date IS NOT ?\n         RETURNING length",
+  "describe": {
+    "columns": [
+      {
+        "name": "length",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "dicks",
+            "name": "length"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 8
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "8b2c4ace2c54db63cc709d42c6e8b77922ab2c490754cb30f3c3d7ba7308166d"
+}

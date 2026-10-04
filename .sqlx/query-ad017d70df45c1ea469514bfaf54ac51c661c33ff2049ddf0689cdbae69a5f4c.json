@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE dicks\n         SET length = length + ?, pvp_wins = pvp_wins + 1,\n             pvp_current_streak = pvp_current_streak + 1,\n             pvp_max_streak = MAX(pvp_max_streak, pvp_current_streak + 1),\n             cm_won = cm_won + ?\n         WHERE user_id = ? AND guild_id = ? AND length >= ?\n         RETURNING length, pvp_current_streak",
+  "describe": {
+    "columns": [
+      {
+        "name": "length",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "dicks",
+            "name": "length"
+          }
+        }
+      },
+      {
+        "name": "pvp_current_streak",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "dicks",
+            "name": "pvp_current_streak"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "ad017d70df45c1ea469514bfaf54ac51c661c33ff2049ddf0689cdbae69a5f4c"
+}
