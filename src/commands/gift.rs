@@ -1,72 +1,14 @@
 use crate::commands::{Cmd, CommandResult};
 use crate::db::{self, History};
-use crate::time;
 use crate::utils::{colors, embed};
-use chrono::Duration;
 use serenity::all::{
     CommandOptionType, CreateCommand, CreateCommandOption, CreateEmbedFooter,
     CreateInteractionResponseMessage, Mentionable, ResolvedValue,
 };
-use sqlx::SqliteConnection;
-
-/// Most cm a user can send, and separately receive, within the rolling window.
-/// Capping both stops alt accounts from funnelling their growth into one main account.
-pub const GIFT_LIMIT_CM: i64 = 50;
-const GIFT_WINDOW_DAYS: i64 = 7;
-
-struct GiftUsage {
-    total: i64,
-    /// When the oldest gift in the window ages out and frees up allowance.
-    frees_up: Option<chrono::NaiveDateTime>,
-}
-
-impl GiftUsage {
-    fn remaining(&self) -> i64 {
-        (GIFT_LIMIT_CM - self.total).max(0)
-    }
-
-    fn frees_up_text(&self) -> String {
-        self.frees_up
-            .map(|time| format!(" More allowance frees up {}.", time::relative(time)))
-            .unwrap_or_default()
-    }
-}
-
-async fn gift_usage(
-    conn: &mut SqliteConnection,
-    user_id: &str,
-    guild_id: &str,
-    kind: History,
-) -> sqlx::Result<GiftUsage> {
-    let kind = kind.as_str();
-    let window = format!("-{GIFT_WINDOW_DAYS} days");
-    let row = sqlx::query!(
-        r#"SELECT COALESCE(SUM(ABS(growth_amount)), 0) as "total!: i64", MIN(timestamp) as oldest
-         FROM length_history
-         WHERE user_id = ? AND guild_id = ? AND growth_type = ? AND timestamp > datetime('now', ?)"#,
-        user_id,
-        guild_id,
-        kind,
-        window
-    )
-    .fetch_one(conn)
-    .await?;
-
-    Ok(GiftUsage {
-        total: row.total,
-        frees_up: row
-            .oldest
-            .as_deref()
-            .and_then(time::parse)
-            .map(|oldest| oldest + Duration::days(GIFT_WINDOW_DAYS)),
-    })
-}
 
 pub fn register() -> CreateCommand {
     CreateCommand::new("gift")
-        .description(format!(
-            "Gift some of your length to another user (max {GIFT_LIMIT_CM} cm per {GIFT_WINDOW_DAYS} days)"
-        ))
+        .description("Gift some of your length to another user")
         .add_option(
             CreateCommandOption::new(
                 CommandOptionType::User,
@@ -155,39 +97,6 @@ pub async fn run(cmd: &Cmd<'_>) -> CommandResult {
             ))
             .await;
     };
-    // The UPDATE above holds SQLite's write lock, so these limits can't race other gifts.
-    let sent = gift_usage(&mut tx, &cmd.user, &cmd.guild, History::GiftSent).await?;
-    if sent.total + amount > GIFT_LIMIT_CM {
-        return cmd
-            .reply_ephemeral(embed(
-                "🛑 Weekly Gift Limit Reached",
-                format!(
-                    "You've already gifted **{}/{GIFT_LIMIT_CM} cm** in the last {GIFT_WINDOW_DAYS} days, so you can only gift **{} cm** right now.{}",
-                    sent.total,
-                    sent.remaining(),
-                    sent.frees_up_text()
-                ),
-                colors::WARNING,
-            ))
-            .await;
-    }
-    let received = gift_usage(&mut tx, &recipient_id, &cmd.guild, History::GiftReceived).await?;
-    if received.total + amount > GIFT_LIMIT_CM {
-        return cmd
-            .reply_ephemeral(embed(
-                "🛑 Recipient Gift Limit Reached",
-                format!(
-                    "{} has already received **{}/{GIFT_LIMIT_CM} cm** in gifts in the last {GIFT_WINDOW_DAYS} days, so they can only accept **{} cm** right now.{}",
-                    recipient.mention(),
-                    received.total,
-                    received.remaining(),
-                    received.frees_up_text()
-                ),
-                colors::WARNING,
-            ))
-            .await;
-    }
-
     let recipient_length = sqlx::query_scalar!(
         "UPDATE dicks SET length = length + ? WHERE user_id = ? AND guild_id = ? RETURNING length",
         amount,
@@ -246,10 +155,9 @@ pub async fn run(cmd: &Cmd<'_>) -> CommandResult {
                     ),
                     false,
                 )
-                .footer(CreateEmbedFooter::new(format!(
-                    "You can gift {} more cm this week. Sharing is caring!",
-                    sent.remaining() - amount
-                ))),
+                .footer(CreateEmbedFooter::new(
+                    "Sharing is caring! Spread the love (and the length)!",
+                )),
             ),
     )
     .await
