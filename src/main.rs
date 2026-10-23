@@ -4,6 +4,7 @@ mod llm;
 mod time;
 mod utils;
 
+use commands::grow::PreparedFooters;
 use commands::pvp::{self, PvpChallenge};
 use commands::{Cmd, events};
 use fern::colors::{Color, ColoredLevelConfig};
@@ -25,6 +26,7 @@ pub struct Bot {
     pub db: SqlitePool,
     /// Open PvP challenges keyed by the ID of the interaction that created them.
     pub pvp_challenges: RwLock<HashMap<u64, PvpChallenge>>,
+    pub grow_footers: PreparedFooters,
 }
 
 struct Handler {
@@ -192,6 +194,7 @@ async fn main() {
         bot: Arc::new(Bot {
             db,
             pvp_challenges: RwLock::new(HashMap::new()),
+            grow_footers: PreparedFooters::default(),
         }),
         started: AtomicBool::new(false),
     };

@@ -2,13 +2,17 @@ use crate::commands::events::{GlobalEvent, active_event, add_to_community_pot};
 use crate::commands::viagra;
 use crate::commands::{Cmd, CommandResult};
 use crate::db::{self, History};
-use crate::time;
-use crate::utils::{colors, embed, ordinal, pluralize};
+use crate::utils::{colors, embed, ordinal, pluralize, rank_title, size_class};
+use crate::{llm, time};
 use chrono::{Days, Duration, NaiveDate, Utc};
+use log::info;
 use rand::RngExt;
 use rand::seq::IndexedRandom;
 use serenity::all::{CreateCommand, CreateEmbedFooter};
 use sqlx::SqlitePool;
+use std::collections::HashMap;
+use std::sync::Arc;
+use tokio::sync::RwLock;
 
 const BASE_GROWTH_RANGE: (i64, i64) = (1, 10);
 pub const DEFAULT_COOLDOWN_MINUTES: i64 = 60;
@@ -36,6 +40,68 @@ const FOOTERS: &[&str] = &[
     "Keep it between the sheets and in the database.",
     "Your dick is a garden. Water it daily.",
 ];
+
+/// AI footers written ahead of time for each player's next /grow, keyed by
+/// (user ID, guild ID), so the command never waits for the LLM.
+pub type PreparedFooters = Arc<RwLock<HashMap<(String, String), PreparedFooter>>>;
+
+pub struct PreparedFooter {
+    line: String,
+    facts: FooterFacts,
+}
+
+/// What a prepared footer was written about. The footer is only used while
+/// these still describe the player after their next grow.
+#[derive(Clone, PartialEq, Debug)]
+struct FooterFacts {
+    name: String,
+    title: &'static str,
+    size: &'static str,
+}
+
+impl FooterFacts {
+    fn prompt(&self) -> String {
+        let FooterFacts { name, title, size } = self;
+        format!(
+            "Write the footer shown under {name}'s next /grow result. {name} holds the server title \
+             \"{title}\" and their dick is {size}. You don't know how much they will grow, so \
+             don't mention any numbers."
+        )
+    }
+}
+
+/// Takes the footer prepared for this player if it still fits them, otherwise
+/// a random static one.
+async fn take_footer(
+    footers: &PreparedFooters,
+    key: &(String, String),
+    facts: &FooterFacts,
+) -> String {
+    match footers.write().await.remove(key) {
+        Some(prepared) if prepared.facts == *facts => return prepared.line,
+        Some(prepared) => info!(
+            "Dropped stale grow footer for {}: written for {:?}, player is now {:?}",
+            key.0, prepared.facts, facts
+        ),
+        None => {}
+    }
+    FOOTERS
+        .choose(&mut rand::rng())
+        .expect("footers are not empty")
+        .to_string()
+}
+
+/// Writes the footer for the player's next grow in the background.
+fn prepare_footer(footers: PreparedFooters, key: (String, String), facts: FooterFacts) {
+    tokio::spawn(async move {
+        if let Some(line) = llm::commentary(&facts.prompt()).await {
+            footers
+                .write()
+                .await
+                .insert(key, PreparedFooter { line, facts });
+        }
+    });
+}
 
 pub fn cooldown_minutes(event: Option<&GlobalEvent>) -> i64 {
     event
@@ -201,9 +267,14 @@ pub async fn run(cmd: &Cmd<'_>) -> CommandResult {
     } else {
         format!("\n**Boosts:** {}", boosts.join(" · "))
     };
-    let footer = *FOOTERS
-        .choose(&mut rand::rng())
-        .expect("footers are not empty");
+    let footer_key = (cmd.user.clone(), cmd.guild.clone());
+    let facts = FooterFacts {
+        name: cmd.interaction.user.display_name().to_string(),
+        title: rank_title(rank),
+        size: size_class(new_length),
+    };
+    let footer = take_footer(&cmd.bot.grow_footers, &footer_key, &facts).await;
+    prepare_footer(cmd.bot.grow_footers.clone(), footer_key, facts);
 
     cmd.reply(
         embed(
@@ -343,6 +414,46 @@ mod tests {
         ];
         for (streak, expected) in cases {
             assert_eq!(streak_reward(streak), expected, "streak {streak}");
+        }
+    }
+
+    fn facts(name: &str, title: &'static str) -> FooterFacts {
+        FooterFacts {
+            name: name.to_string(),
+            title,
+            size: "small",
+        }
+    }
+
+    async fn prepared(name: &str, title: &'static str) -> (PreparedFooters, (String, String)) {
+        let footers = PreparedFooters::default();
+        let key = ("1".to_string(), "2".to_string());
+        footers.write().await.insert(
+            key.clone(),
+            PreparedFooter {
+                line: "ai line".to_string(),
+                facts: facts(name, title),
+            },
+        );
+        (footers, key)
+    }
+
+    #[tokio::test]
+    async fn prepared_footer_is_used_once_while_facts_match() {
+        let (footers, key) = prepared("kuba", "Rising Star").await;
+        let current = facts("kuba", "Rising Star");
+        assert_eq!(take_footer(&footers, &key, &current).await, "ai line");
+        let next = take_footer(&footers, &key, &current).await;
+        assert!(FOOTERS.contains(&next.as_str()));
+    }
+
+    #[tokio::test]
+    async fn stale_prepared_footer_is_dropped() {
+        for current in [facts("kuba2", "Rising Star"), facts("kuba", "GOD OF DICKS")] {
+            let (footers, key) = prepared("kuba", "Rising Star").await;
+            let footer = take_footer(&footers, &key, &current).await;
+            assert!(FOOTERS.contains(&footer.as_str()), "{current:?}");
+            assert!(footers.read().await.is_empty());
         }
     }
 }

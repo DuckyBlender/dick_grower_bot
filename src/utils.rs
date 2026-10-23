@@ -40,6 +40,19 @@ pub fn medal(index: usize) -> &'static str {
     }
 }
 
+/// Coarse size description for AI prompts. It changes far less often than the
+/// exact length, so a prepared comment built on it stays valid for several grows.
+pub fn size_class(length: i64) -> &'static str {
+    match length {
+        ..=0 => "practically an innie",
+        1..50 => "small",
+        50..100 => "average",
+        100..150 => "impressive",
+        150..200 => "huge, basically a third leg",
+        _ => "legendary, a scientific anomaly",
+    }
+}
+
 /// Formats a number with its English ordinal suffix, e.g. `1st`, `12th`, `23rd`.
 pub fn ordinal(n: usize) -> String {
     let suffix = match (n % 10, n % 100) {
