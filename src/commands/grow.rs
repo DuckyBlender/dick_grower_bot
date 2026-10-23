@@ -2,7 +2,7 @@ use crate::commands::events::{GlobalEvent, active_event, add_to_community_pot};
 use crate::commands::viagra;
 use crate::commands::{Cmd, CommandResult};
 use crate::db::{self, History};
-use crate::utils::{colors, embed, ordinal, pluralize, rank_title, size_class};
+use crate::utils::{colors, embed, ordinal, pluralize, size_class};
 use crate::{llm, time};
 use chrono::{Days, Duration, NaiveDate, Utc};
 use log::info;
@@ -55,17 +55,15 @@ pub struct PreparedFooter {
 #[derive(Clone, PartialEq, Debug)]
 struct FooterFacts {
     name: String,
-    title: &'static str,
     size: &'static str,
 }
 
 impl FooterFacts {
     fn prompt(&self) -> String {
-        let FooterFacts { name, title, size } = self;
+        let FooterFacts { name, size } = self;
         format!(
-            "Write the footer shown under {name}'s next /grow result. {name} holds the server title \
-             \"{title}\" and their dick is {size}. You don't know how much they will grow, so \
-             don't mention any numbers."
+            "Write the footer shown under {name}'s next /grow result. {name}'s dick is {size}. \
+             You don't know how much they will grow, so don't mention any numbers."
         )
     }
 }
@@ -270,7 +268,6 @@ pub async fn run(cmd: &Cmd<'_>) -> CommandResult {
     let footer_key = (cmd.user.clone(), cmd.guild.clone());
     let facts = FooterFacts {
         name: cmd.interaction.user.display_name().to_string(),
-        title: rank_title(rank),
         size: size_class(new_length, rank, db::grown_players(db, &cmd.guild).await?),
     };
     let footer = take_footer(&cmd.bot.grow_footers, &footer_key, &facts).await;
@@ -417,22 +414,21 @@ mod tests {
         }
     }
 
-    fn facts(name: &str, title: &'static str) -> FooterFacts {
+    fn facts(name: &str, size: &'static str) -> FooterFacts {
         FooterFacts {
             name: name.to_string(),
-            title,
-            size: "small",
+            size,
         }
     }
 
-    async fn prepared(name: &str, title: &'static str) -> (PreparedFooters, (String, String)) {
+    async fn prepared(name: &str, size: &'static str) -> (PreparedFooters, (String, String)) {
         let footers = PreparedFooters::default();
         let key = ("1".to_string(), "2".to_string());
         footers.write().await.insert(
             key.clone(),
             PreparedFooter {
                 line: "ai line".to_string(),
-                facts: facts(name, title),
+                facts: facts(name, size),
             },
         );
         (footers, key)
@@ -440,8 +436,8 @@ mod tests {
 
     #[tokio::test]
     async fn prepared_footer_is_used_once_while_facts_match() {
-        let (footers, key) = prepared("kuba", "Rising Star").await;
-        let current = facts("kuba", "Rising Star");
+        let (footers, key) = prepared("kuba", "big for this server").await;
+        let current = facts("kuba", "big for this server");
         assert_eq!(take_footer(&footers, &key, &current).await, "ai line");
         let next = take_footer(&footers, &key, &current).await;
         assert!(FOOTERS.contains(&next.as_str()));
@@ -449,8 +445,11 @@ mod tests {
 
     #[tokio::test]
     async fn stale_prepared_footer_is_dropped() {
-        for current in [facts("kuba2", "Rising Star"), facts("kuba", "GOD OF DICKS")] {
-            let (footers, key) = prepared("kuba", "Rising Star").await;
+        for current in [
+            facts("kuba2", "big for this server"),
+            facts("kuba", "the biggest on this server"),
+        ] {
+            let (footers, key) = prepared("kuba", "big for this server").await;
             let footer = take_footer(&footers, &key, &current).await;
             assert!(FOOTERS.contains(&footer.as_str()), "{current:?}");
             assert!(footers.read().await.is_empty());
