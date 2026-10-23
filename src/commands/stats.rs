@@ -2,7 +2,7 @@ use crate::commands::events::active_event;
 use crate::commands::{Cmd, CommandResult, grow, viagra};
 use crate::db;
 use crate::time;
-use crate::utils::{colors, embed, escape_markdown, ordinal, pluralize, rank_title};
+use crate::utils::{colors, embed, escape_markdown, ordinal, pluralize, rank_title, size_class};
 use chrono::Duration;
 use serenity::all::{
     CommandOptionType, CreateCommand, CreateCommandOption, CreateEmbedFooter, ResolvedValue,
@@ -109,16 +109,6 @@ pub async fn run(cmd: &Cmd<'_>) -> CommandResult {
         0.0
     };
 
-    let assessment = match stats.length {
-        ..=0 if is_self => "Your dick is practically an innie at this point. Keep trying!",
-        ..=0 => "Their dick is practically an innie at this point. Tragic!",
-        1..50 => "It's... cute? At least that's what they'll say to be nice.",
-        50..100 => "Not bad! In the average zone. But who wants to be average?",
-        100..150 => "Impressive length! That's some serious heat down there.",
-        150..200 => "WOW! That's a third leg, not a dick! Special pants required?",
-        _ => "LEGENDARY! Scientists want to study this mutation. BEWARE!",
-    };
-
     let name = escape_markdown(target.display_name());
     let description = if is_self {
         "Here's everything you wanted to know about your cucumber (and probably some things you didn't):".to_string()
@@ -131,57 +121,71 @@ pub async fn run(cmd: &Cmd<'_>) -> CommandResult {
         "Use /stats without parameters to see your own stats!"
     };
 
-    cmd.reply(
-        embed(
-            format!("🍆 {name}'s Dick Stats"),
-            description,
-            colors::PURPLE,
-        )
-        .field("📏 Length", format!("**{} cm**", stats.length), true)
-        .field("🏅 Server Rank", format!("**{}**", ordinal(rank)), true)
-        .field("👑 Title", rank_title(rank), true)
-        .field(
-            "🌱 Growth",
-            format!(
-                "{}\n{growth_status}",
-                pluralize(stats.growth_count, "grow", "grows")
-            ),
-            true,
-        )
-        .field(
-            "🔥 Daily Streak",
-            format!(
-                "**{}**\nBest: {}",
-                pluralize(stats.daily_streak, "day", "days"),
-                pluralize(stats.best_daily_streak, "day", "days")
-            ),
-            true,
-        )
-        .field(
-            "🏆 Dick of the Day",
-            pluralize(stats.dick_of_day_count, "time", "times"),
-            true,
-        )
-        .field("💊 Viagra", viagra_status, true)
-        .field("🎒 Perks", perks, true)
-        .field(
-            "⚔️ Battle Stats",
-            format!(
-                "**{}W / {}L** ({win_rate:.1}% win rate)\n\
+    let stats_embed = embed(
+        format!("🍆 {name}'s Dick Stats"),
+        description,
+        colors::PURPLE,
+    )
+    .field("📏 Length", format!("**{} cm**", stats.length), true)
+    .field("🏅 Server Rank", format!("**{}**", ordinal(rank)), true)
+    .field("👑 Title", rank_title(rank), true)
+    .field(
+        "🌱 Growth",
+        format!(
+            "{}\n{growth_status}",
+            pluralize(stats.growth_count, "grow", "grows")
+        ),
+        true,
+    )
+    .field(
+        "🔥 Daily Streak",
+        format!(
+            "**{}**\nBest: {}",
+            pluralize(stats.daily_streak, "day", "days"),
+            pluralize(stats.best_daily_streak, "day", "days")
+        ),
+        true,
+    )
+    .field(
+        "🏆 Dick of the Day",
+        pluralize(stats.dick_of_day_count, "time", "times"),
+        true,
+    )
+    .field("💊 Viagra", viagra_status, true)
+    .field("🎒 Perks", perks, true)
+    .field(
+        "⚔️ Battle Stats",
+        format!(
+            "**{}W / {}L** ({win_rate:.1}% win rate)\n\
                      Current streak: **{}** · Best streak: **{}**\n\
                      Won: **{} cm** · Lost: **{} cm**",
-                stats.pvp_wins,
-                stats.pvp_losses,
-                stats.pvp_current_streak,
-                stats.pvp_max_streak,
-                stats.cm_won,
-                stats.cm_lost
-            ),
-            false,
-        )
-        .field("🩺 Professional Assessment", assessment, false)
-        .thumbnail(target.face())
-        .footer(CreateEmbedFooter::new(footer)),
+            stats.pvp_wins,
+            stats.pvp_losses,
+            stats.pvp_current_streak,
+            stats.pvp_max_streak,
+            stats.cm_won,
+            stats.cm_lost
+        ),
+        false,
     )
-    .await
+    .thumbnail(target.face())
+    .footer(CreateEmbedFooter::new(footer));
+    cmd.reply(stats_embed.clone()).await?;
+
+    let raw_name = target.display_name();
+    let assessment_prompt = format!(
+        "Give a one-line, crude but professional-sounding medical assessment of {raw_name}'s dick. \
+         Stats: {} cm, which is {}; ranked {} on the server with the title \"{}\"; {}; \
+         {} battles won and {} lost; daily growth streak of {}.",
+        stats.length,
+        size_class(stats.length),
+        ordinal(rank),
+        rank_title(rank),
+        pluralize(stats.growth_count, "grow", "grows"),
+        stats.pvp_wins,
+        stats.pvp_losses,
+        pluralize(stats.daily_streak, "day", "days")
+    );
+    cmd.add_commentary(stats_embed, &assessment_prompt).await;
+    Ok(())
 }

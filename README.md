@@ -70,7 +70,7 @@ The bot's status shows the active event.
 - The footer of the announcement is replaced by a one-line comment from the AI commentator.
 
 ### AI Commentator
-Dick of the Day announcements and battle results are posted right away, then a local LLM (Nemotron 3.5 Bolt E4B on a llama.cpp server) writes one crude line about them, which replaces the embed's footer a few seconds later. The game itself never depends on it: if the server is down or takes longer than 10 seconds, the message simply stays without a comment.
+Dick of the Day announcements, battle results and `/stats` are posted right away, then a local LLM (Nemotron 3.5 Bolt E4B on a llama.cpp server) writes one crude line about them, which replaces the embed's footer a few seconds later. The game itself never depends on it: if the server is down or takes longer than 10 seconds, the message simply stays without a comment.
 
 `/grow` never waits for the LLM. After each grow the bot writes, in the background, the footer for that player's next grow, based on their display name, server title and size class. The next grow uses it only if those three still describe the player afterwards; if the player renamed, changed title or moved to another size class, that grow gets one of the built-in footers and a fresh comment is written for the one after. Prepared footers live in memory, so the first grow after a restart also uses a built-in footer.
 
