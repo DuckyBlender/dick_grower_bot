@@ -271,7 +271,7 @@ pub async fn run(cmd: &Cmd<'_>) -> CommandResult {
     let facts = FooterFacts {
         name: cmd.interaction.user.display_name().to_string(),
         title: rank_title(rank),
-        size: size_class(new_length),
+        size: size_class(new_length, rank, db::grown_players(db, &cmd.guild).await?),
     };
     let footer = take_footer(&cmd.bot.grow_footers, &footer_key, &facts).await;
     prepare_footer(cmd.bot.grow_footers.clone(), footer_key, facts);

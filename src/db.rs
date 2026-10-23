@@ -106,6 +106,15 @@ pub async fn guild_rank(db: &SqlitePool, guild_id: &str, length: i64) -> sqlx::R
     Ok(above as usize + 1)
 }
 
+/// Number of the guild's players who have grown at least once. Players who
+/// only ever ran other commands sit at 0 cm and don't count as competitors.
+pub async fn grown_players(db: &SqlitePool, guild_id: &str) -> sqlx::Result<i64> {
+    sqlx::query_scalar("SELECT COUNT(*) FROM dicks WHERE guild_id = ? AND growth_count > 0")
+        .bind(guild_id)
+        .fetch_one(db)
+        .await
+}
+
 #[derive(Clone, Copy)]
 pub enum History {
     Grow,
@@ -211,5 +220,33 @@ mod tests {
         assert!(!active);
         assert_eq!(length(&db, "1", "2").await.unwrap(), 0);
         assert_eq!(guild_rank(&db, "2", 0).await.unwrap(), 1);
+    }
+
+    #[tokio::test]
+    async fn grown_players_ignores_players_who_never_grew_and_other_guilds() {
+        let db = database(&[INITIAL, FEATURES]).await;
+        ensure_schema(&db).await.unwrap();
+        assert_eq!(grown_players(&db, "g").await.unwrap(), 0);
+
+        for (user, guild, length, grows) in [
+            ("a", "g", 10, 1),
+            ("b", "g", 50, 3),
+            ("c", "g", 5000, 9),
+            ("d", "g", 0, 0),
+            ("e", "other", 9999, 5),
+        ] {
+            ensure_user(&db, user, guild).await.unwrap();
+            sqlx::query(
+                "UPDATE dicks SET length = ?, growth_count = ? WHERE user_id = ? AND guild_id = ?",
+            )
+            .bind(length)
+            .bind(grows)
+            .bind(user)
+            .bind(guild)
+            .execute(&db)
+            .await
+            .unwrap();
+        }
+        assert_eq!(grown_players(&db, "g").await.unwrap(), 3);
     }
 }

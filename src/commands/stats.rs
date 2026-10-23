@@ -173,12 +173,13 @@ pub async fn run(cmd: &Cmd<'_>) -> CommandResult {
     cmd.reply(stats_embed.clone()).await?;
 
     let raw_name = target.display_name();
+    let players = db::grown_players(&cmd.bot.db, &cmd.guild).await?;
     let assessment_prompt = format!(
         "Give a one-line, crude but professional-sounding medical assessment of {raw_name}'s dick. \
-         Stats: {} cm, which is {}; ranked {} on the server with the title \"{}\"; {}; \
-         {} battles won and {} lost; daily growth streak of {}.",
+         Stats: {} cm, which is {}; ranked {} of {players} players on the server with the \
+         title \"{}\"; {}; {} battles won and {} lost; daily growth streak of {}.",
         stats.length,
-        size_class(stats.length),
+        size_class(stats.length, rank, players),
         ordinal(rank),
         rank_title(rank),
         pluralize(stats.growth_count, "grow", "grows"),

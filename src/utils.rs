@@ -40,16 +40,25 @@ pub fn medal(index: usize) -> &'static str {
     }
 }
 
-/// Coarse size description for AI prompts. It changes far less often than the
-/// exact length, so a prepared comment built on it stays valid for several grows.
-pub fn size_class(length: i64) -> &'static str {
-    match length {
-        ..=0 => "practically an innie",
-        1..50 => "small",
-        50..100 => "average",
-        100..150 => "impressive",
-        150..200 => "huge, basically a third leg",
-        _ => "legendary, a scientific anomaly",
+/// Size description for AI prompts, from the player's position among the
+/// server's `players` who have grown. Lengths on a server span orders of
+/// magnitude, so 50 cm is big on one server and small on another; the
+/// position is what matters. Coarse on purpose, so a prepared comment built
+/// on it stays valid for several grows.
+pub fn size_class(length: i64, rank: usize, players: i64) -> &'static str {
+    if length <= 0 {
+        return "practically an innie";
+    }
+    if rank == 1 {
+        return "the biggest on this server";
+    }
+    // Share of the server that is bigger than this player.
+    let bigger = (rank - 1) as f64 / players.max(1) as f64;
+    match bigger {
+        b if b < 0.05 => "one of the biggest on this server",
+        b if b < 0.25 => "big for this server",
+        b if b < 0.75 => "about average for this server",
+        _ => "small for this server",
     }
 }
 
@@ -105,6 +114,21 @@ mod tests {
         for (n, expected) in cases {
             assert_eq!(ordinal(n), expected);
         }
+    }
+
+    #[test]
+    fn size_class_follows_the_server_position() {
+        assert_eq!(size_class(20814, 1, 55), "the biggest on this server");
+        assert_eq!(
+            size_class(5000, 3, 100),
+            "one of the biggest on this server"
+        );
+        assert_eq!(size_class(50, 20, 100), "big for this server");
+        assert_eq!(size_class(50, 50, 100), "about average for this server");
+        assert_eq!(size_class(5, 90, 100), "small for this server");
+        assert_eq!(size_class(0, 99, 100), "practically an innie");
+        // Ranked against players who never grew, so the rank can exceed the count.
+        assert_eq!(size_class(3, 7, 4), "small for this server");
     }
 
     #[test]
