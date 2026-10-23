@@ -117,16 +117,28 @@ pub async fn run(cmd: &Cmd<'_>) -> CommandResult {
     .footer(CreateEmbedFooter::new(
         "Stay tuned for tomorrow's competition! (and don't forget to /grow)",
     ));
-    if let Ok(user) = winner_id.to_user(cmd.ctx).await {
+    let winner_user = winner_id.to_user(cmd.ctx).await.ok();
+    if let Some(user) = &winner_user {
         announcement = announcement.thumbnail(user.face());
     }
 
     cmd.respond(
         CreateInteractionResponseMessage::new()
             .content(mention.to_string())
-            .embed(announcement),
+            .embed(announcement.clone()),
     )
-    .await
+    .await?;
+
+    let name = winner_user
+        .as_ref()
+        .map_or("The winner", |user| user.display_name());
+    let event = format!(
+        "{name} was randomly crowned today's Dick of the Day and got a +{bonus} cm bonus, \
+         now {new_length} cm and ranked {} on the server.",
+        ordinal(rank)
+    );
+    cmd.add_commentary(announcement, &event).await;
+    Ok(())
 }
 
 async fn reply_already_awarded(cmd: &Cmd<'_>) -> CommandResult {

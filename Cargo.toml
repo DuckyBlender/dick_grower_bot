@@ -13,3 +13,5 @@ chrono = "0.4.45"
 dotenvy = "0.15.7"
 log = "0.4.34"
 fern = { version = "0.7.1", features = ["colored"] }
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }
+serde_json = "1.0"

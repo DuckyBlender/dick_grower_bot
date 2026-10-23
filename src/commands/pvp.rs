@@ -1,14 +1,14 @@
-use crate::Bot;
-use crate::commands::{Cmd, CommandResult};
+use crate::commands::{COMMENTARY_FIELD, Cmd, CommandResult};
 use crate::db::{self, History};
-use crate::time;
 use crate::utils::{colors, embed};
+use crate::{Bot, llm, time};
 use chrono::Duration;
 use rand::RngExt;
 use serenity::all::{
     ButtonStyle, CommandOptionType, ComponentInteraction, Context, CreateActionRow, CreateButton,
     CreateCommand, CreateCommandOption, CreateEmbed, CreateEmbedFooter, CreateInteractionResponse,
-    CreateInteractionResponseMessage, GuildId, Mention, Mentionable, UserId,
+    CreateInteractionResponseMessage, EditInteractionResponse, GuildId, Mention, Mentionable,
+    UserId,
 };
 use std::time::Instant;
 
@@ -398,33 +398,58 @@ pub async fn handle_component(
         _ => String::new(),
     };
 
-    close_message(
-        ctx,
-        component,
-        embed(
-            "🏆 Dick Battle Results!",
-            format!(
-                "👑 {winner_mention} won **{bet} cm** from {loser_mention}!{streak_comment}\n\n{}",
-                taunt(winner_roll - loser_roll, bet, winner_mention, loser_mention)
-            ),
-            colors::SUCCESS,
-        )
-        .field(
-            "🎲 Rolls",
-            format!("👑 {winner_mention}: **{winner_roll}**\n{loser_mention}: **{loser_roll}**"),
-            true,
-        )
-        .field(
-            "📏 New Lengths",
-            format!(
-                "👑 {winner_mention}: **{} cm**\n{loser_mention}: **{loser_length} cm**",
-                winner_row.length
-            ),
-            true,
-        )
-        .footer(CreateEmbedFooter::new("Size DOES matter after all!")),
+    let results = embed(
+        "🏆 Dick Battle Results!",
+        format!(
+            "👑 {winner_mention} won **{bet} cm** from {loser_mention}!{streak_comment}\n\n{}",
+            taunt(winner_roll - loser_roll, bet, winner_mention, loser_mention)
+        ),
+        colors::SUCCESS,
     )
-    .await
+    .field(
+        "🎲 Rolls",
+        format!("👑 {winner_mention}: **{winner_roll}**\n{loser_mention}: **{loser_roll}**"),
+        true,
+    )
+    .field(
+        "📏 New Lengths",
+        format!(
+            "👑 {winner_mention}: **{} cm**\n{loser_mention}: **{loser_length} cm**",
+            winner_row.length
+        ),
+        true,
+    )
+    .footer(CreateEmbedFooter::new("Size DOES matter after all!"));
+    close_message(ctx, component, results.clone()).await?;
+
+    let acceptor_name = component.user.display_name().to_string();
+    let challenger_name = match challenger.to_user(ctx).await {
+        Ok(user) => user.display_name().to_string(),
+        Err(_) => "The challenger".to_string(),
+    };
+    let (winner_name, loser_name) = if winner == user {
+        (acceptor_name, challenger_name)
+    } else {
+        (challenger_name, acceptor_name)
+    };
+    let streak_note = if streak >= 3 {
+        format!(" {winner_name} is on a {streak}-win streak.")
+    } else {
+        String::new()
+    };
+    let event = format!(
+        "{winner_name} beat {loser_name} in a dick battle for {bet} cm, rolling {winner_roll} against {loser_roll}. \
+         {winner_name} is now {} cm and {loser_name} dropped to {loser_length} cm.{streak_note}",
+        winner_row.length
+    );
+    if let Some(line) = llm::commentary(&event).await {
+        let edit =
+            EditInteractionResponse::new().embed(results.field(COMMENTARY_FIELD, line, false));
+        if let Err(why) = component.edit_response(&ctx.http, edit).await {
+            log::warn!("Cannot add commentary to battle results: {why}");
+        }
+    }
+    Ok(())
 }
 
 fn taunt(margin: i64, bet: i64, winner: Mention, loser: Mention) -> String {

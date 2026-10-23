@@ -35,6 +35,7 @@ docker run -d \
     --name dick-grower-bot \
     --restart unless-stopped \
     --env-file "$(pwd)/.env" \
+    --add-host host.docker.internal:host-gateway \
     -v "$(pwd)/database.sqlite:/app/database.sqlite" \
     dick-bot
 

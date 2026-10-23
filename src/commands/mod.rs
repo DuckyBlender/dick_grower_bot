@@ -10,7 +10,7 @@ pub mod stats;
 pub mod top;
 pub mod viagra;
 
-use crate::Bot;
+use crate::{Bot, llm};
 use serenity::all::{
     CommandInteraction, Context, CreateCommand, CreateEmbed, CreateInteractionResponse,
     CreateInteractionResponseMessage, EditInteractionResponse, GuildId, InteractionContext,
@@ -20,7 +20,8 @@ use std::fmt;
 #[derive(Debug)]
 pub enum Error {
     Database(sqlx::Error),
-    Discord(serenity::Error),
+    // Boxed because serenity::Error is large enough to bloat every CommandResult.
+    Discord(Box<serenity::Error>),
 }
 
 impl fmt::Display for Error {
@@ -42,7 +43,7 @@ impl From<sqlx::Error> for Error {
 
 impl From<serenity::Error> for Error {
     fn from(why: serenity::Error) -> Self {
-        Error::Discord(why)
+        Error::Discord(Box::new(why))
     }
 }
 
@@ -94,7 +95,24 @@ impl Cmd<'_> {
             .await?;
         Ok(())
     }
+
+    /// Adds a one-line LLM comment on `event` to an embed that was already sent.
+    /// Failures are only logged, so the original response stays as it was.
+    pub async fn add_commentary(&self, embed: CreateEmbed, event: &str) {
+        let Some(line) = llm::commentary(event).await else {
+            return;
+        };
+        let edit = EditInteractionResponse::new().embed(embed.field(COMMENTARY_FIELD, line, false));
+        if let Err(why) = self.interaction.edit_response(&self.ctx.http, edit).await {
+            log::warn!(
+                "Cannot add commentary to /{}: {why}",
+                self.interaction.data.name
+            );
+        }
+    }
 }
+
+pub const COMMENTARY_FIELD: &str = "🎙️ Commentator";
 
 pub async fn dispatch(cmd: &Cmd<'_>) -> CommandResult {
     match cmd.interaction.data.name.as_str() {

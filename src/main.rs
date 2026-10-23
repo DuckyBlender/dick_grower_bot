@@ -1,5 +1,6 @@
 mod commands;
 mod db;
+mod llm;
 mod time;
 mod utils;
 
