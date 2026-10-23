@@ -61,15 +61,15 @@ The bot's status shows the active event.
 - Both players roll 1-100. The higher roll takes the bet; a tie returns everything.
 - Both players must be able to cover the bet when the battle resolves.
 - You can only have one open challenge. Starting a new one cancels the old one.
-- Battle results get a one-line 🎙️ Commentator comment from the AI commentator (see below).
+- The footer of the battle results is replaced by a one-line comment from the AI commentator (see below).
 
 ### Dick of the Day
 - Anyone can run `/dickoftheday` once per server per UTC day.
 - It picks a random user who has grown in the last 7 days. At least 2 such users are needed.
-- The announcement gets a one-line 🎙️ Commentator comment from the AI commentator.
+- The footer of the announcement is replaced by a one-line comment from the AI commentator.
 
 ### AI Commentator
-Dick of the Day announcements and battle results are posted right away, then a local LLM (Nemotron 3.5 Bolt E4B on a llama.cpp server) writes one crude line about them, which is added to the embed a few seconds later. The game itself never depends on it: if the server is down or takes longer than 10 seconds, the message simply stays without a comment. Set `LLM_URL` to the server's chat completions endpoint (default `http://host.docker.internal:8081/v1/chat/completions`), or to an empty value to turn the commentator off.
+Dick of the Day announcements and battle results are posted right away, then a local LLM (Nemotron 3.5 Bolt E4B on a llama.cpp server) writes one crude line about them, which replaces the embed's footer a few seconds later. The game itself never depends on it: if the server is down or takes longer than 10 seconds, the message simply stays without a comment. Set `LLM_URL` to the server's chat completions endpoint (default `http://host.docker.internal:8081/v1/chat/completions`), or to an empty value to turn the commentator off.
 
 ## Setup
 

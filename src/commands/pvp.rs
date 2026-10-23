@@ -1,4 +1,4 @@
-use crate::commands::{COMMENTARY_FIELD, Cmd, CommandResult};
+use crate::commands::{Cmd, CommandResult};
 use crate::db::{self, History};
 use crate::utils::{colors, embed};
 use crate::{Bot, llm, time};
@@ -444,7 +444,7 @@ pub async fn handle_component(
     );
     if let Some(line) = llm::commentary(&event).await {
         let edit =
-            EditInteractionResponse::new().embed(results.field(COMMENTARY_FIELD, line, false));
+            EditInteractionResponse::new().embed(results.footer(CreateEmbedFooter::new(line)));
         if let Err(why) = component.edit_response(&ctx.http, edit).await {
             log::warn!("Cannot add commentary to battle results: {why}");
         }

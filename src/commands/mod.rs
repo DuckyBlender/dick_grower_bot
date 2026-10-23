@@ -12,8 +12,9 @@ pub mod viagra;
 
 use crate::{Bot, llm};
 use serenity::all::{
-    CommandInteraction, Context, CreateCommand, CreateEmbed, CreateInteractionResponse,
-    CreateInteractionResponseMessage, EditInteractionResponse, GuildId, InteractionContext,
+    CommandInteraction, Context, CreateCommand, CreateEmbed, CreateEmbedFooter,
+    CreateInteractionResponse, CreateInteractionResponseMessage, EditInteractionResponse, GuildId,
+    InteractionContext,
 };
 use std::fmt;
 
@@ -96,13 +97,14 @@ impl Cmd<'_> {
         Ok(())
     }
 
-    /// Adds a one-line LLM comment on `event` to an embed that was already sent.
-    /// Failures are only logged, so the original response stays as it was.
+    /// Replaces the footer of an embed that was already sent with a one-line LLM
+    /// comment on `event`. Failures are only logged, so the original response
+    /// stays as it was.
     pub async fn add_commentary(&self, embed: CreateEmbed, event: &str) {
         let Some(line) = llm::commentary(event).await else {
             return;
         };
-        let edit = EditInteractionResponse::new().embed(embed.field(COMMENTARY_FIELD, line, false));
+        let edit = EditInteractionResponse::new().embed(embed.footer(CreateEmbedFooter::new(line)));
         if let Err(why) = self.interaction.edit_response(&self.ctx.http, edit).await {
             log::warn!(
                 "Cannot add commentary to /{}: {why}",
@@ -111,8 +113,6 @@ impl Cmd<'_> {
         }
     }
 }
-
-pub const COMMENTARY_FIELD: &str = "🎙️ Commentator";
 
 pub async fn dispatch(cmd: &Cmd<'_>) -> CommandResult {
     match cmd.interaction.data.name.as_str() {
