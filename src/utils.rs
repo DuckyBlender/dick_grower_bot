@@ -56,7 +56,7 @@ pub fn size_class(length: i64, rank: usize, players: i64) -> &'static str {
     let bigger = (rank - 1) as f64 / players.max(1) as f64;
     match bigger {
         b if b < 0.05 => "one of the biggest on this server",
-        b if b < 0.25 => "big for this server",
+        b if b < 0.10 => "big for this server",
         b if b < 0.75 => "about average for this server",
         _ => "small for this server",
     }
@@ -123,7 +123,8 @@ mod tests {
             size_class(5000, 3, 100),
             "one of the biggest on this server"
         );
-        assert_eq!(size_class(50, 20, 100), "big for this server");
+        assert_eq!(size_class(50, 8, 100), "big for this server");
+        assert_eq!(size_class(50, 20, 100), "about average for this server");
         assert_eq!(size_class(50, 50, 100), "about average for this server");
         assert_eq!(size_class(5, 90, 100), "small for this server");
         assert_eq!(size_class(0, 99, 100), "practically an innie");

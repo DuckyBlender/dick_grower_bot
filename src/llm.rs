@@ -7,7 +7,7 @@ const DEFAULT_LLM_URL: &str = "http://host.docker.internal:8081/v1/chat/completi
 const TIMEOUT: Duration = Duration::from_secs(10);
 const MAX_CHARS: usize = 250;
 
-const SYSTEM_PROMPT: &str = "You write one line of commentary for a silly Discord game where users grow a virtual dick and compete on a server leaderboard. Be crude, funny and short: at most 25 words and at most one emoji. No hashtags, no quotes, no @ symbols. Only mention the players named in the event, and never invent other people.";
+const SYSTEM_PROMPT: &str = "You write one line of commentary for a silly Discord game where users grow a virtual dick and compete on a server leaderboard. Be crude, funny and short: at most 25 words. No emojis, no hashtags, no quotes, no @ symbols. Only mention the players named in the event, and never invent other people.";
 
 /// Asks the local LLM for a one-line comment on a game event. Returns `None`
 /// when the server is unreachable, slow or disabled with an empty `LLM_URL`;
@@ -54,13 +54,36 @@ pub async fn commentary(event: &str) -> Option<String> {
     clean(text)
 }
 
+/// Pictographs, symbol emoji and the joiners and selectors that build them.
+/// The prompt already asks for no emojis; this catches the ones the model
+/// adds anyway.
+fn is_emoji(c: char) -> bool {
+    matches!(
+        c as u32,
+        0x1F000..=0x1FAFF
+            | 0x2300..=0x23FF
+            | 0x2600..=0x27BF
+            | 0x2B00..=0x2BFF
+            | 0xFE00..=0xFE0F
+            | 0x200D
+            | 0x20E3
+            | 0xE0020..=0xE007F
+    )
+}
+
 fn clean(text: &str) -> Option<String> {
-    let line = text
+    let without_emoji: String = text.chars().filter(|&c| !is_emoji(c)).collect();
+    let line = without_emoji
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
         .trim_matches('"')
-        .replace('@', "");
+        .replace('@', "")
+        // A stripped emoji right before punctuation leaves a stray space.
+        .replace(" !", "!")
+        .replace(" ?", "?")
+        .replace(" .", ".")
+        .replace(" ,", ",");
     if line.is_empty() {
         return None;
     }
@@ -82,6 +105,15 @@ mod tests {
             clean(" \"@everyone look:\n kuba wins\" ").as_deref(),
             Some("everyone look: kuba wins")
         );
+    }
+
+    #[test]
+    fn strips_emojis() {
+        assert_eq!(
+            clean("Kuba is king 👑 and ania 🍆 is ❤️ close 👨‍💻!").as_deref(),
+            Some("Kuba is king and ania is close!")
+        );
+        assert_eq!(clean("🍆🔥"), None);
     }
 
     #[test]

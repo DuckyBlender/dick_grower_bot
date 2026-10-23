@@ -63,7 +63,8 @@ impl FooterFacts {
         let FooterFacts { name, size } = self;
         format!(
             "Write the footer shown under {name}'s next /grow result. {name}'s dick is {size}. \
-             You don't know how much they will grow, so don't mention any numbers."
+             Talk only about {name} and don't name any other player. You don't know how much \
+             they will grow, so don't mention any numbers."
         )
     }
 }
