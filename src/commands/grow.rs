@@ -42,45 +42,29 @@ const FOOTERS: &[&str] = &[
 ];
 
 /// AI footers written ahead of time for each player's next /grow, keyed by
-/// (user ID, guild ID), so the command never waits for the LLM.
-pub type PreparedFooters = Arc<RwLock<HashMap<(String, String), PreparedFooter>>>;
+/// (user ID, guild ID), so the command never waits for the LLM. Each value is
+/// the prompt the footer was written from and the footer itself.
+pub type PreparedFooters = Arc<RwLock<HashMap<(String, String), (String, String)>>>;
 
-pub struct PreparedFooter {
-    line: String,
-    facts: FooterFacts,
+/// Prompt for the footer under a player's next grow. A prepared footer is only
+/// used if the prompt built after that grow is identical, meaning the player
+/// kept their name and size class.
+fn footer_prompt(name: &str, size: &str) -> String {
+    format!(
+        "Write the footer shown under {name}'s next /grow result. {name}'s dick is {size}. \
+         Talk only about {name} and don't name any other player. You don't know how much \
+         they will grow, so don't mention any numbers."
+    )
 }
 
-/// What a prepared footer was written about. The footer is only used while
-/// these still describe the player after their next grow.
-#[derive(Clone, PartialEq, Debug)]
-struct FooterFacts {
-    name: String,
-    size: &'static str,
-}
-
-impl FooterFacts {
-    fn prompt(&self) -> String {
-        let FooterFacts { name, size } = self;
-        format!(
-            "Write the footer shown under {name}'s next /grow result. {name}'s dick is {size}. \
-             Talk only about {name} and don't name any other player. You don't know how much \
-             they will grow, so don't mention any numbers."
-        )
-    }
-}
-
-/// Takes the footer prepared for this player if it still fits them, otherwise
-/// a random static one.
-async fn take_footer(
-    footers: &PreparedFooters,
-    key: &(String, String),
-    facts: &FooterFacts,
-) -> String {
+/// Takes the footer prepared for this player if it was written from the same
+/// prompt, otherwise a random static one.
+async fn take_footer(footers: &PreparedFooters, key: &(String, String), prompt: &str) -> String {
     match footers.write().await.remove(key) {
-        Some(prepared) if prepared.facts == *facts => return prepared.line,
-        Some(prepared) => info!(
-            "Dropped stale grow footer for {}: written for {:?}, player is now {:?}",
-            key.0, prepared.facts, facts
+        Some((written_for, line)) if written_for == prompt => return line,
+        Some((written_for, _)) => info!(
+            "Dropped stale grow footer for {}: written for {written_for:?}, now {prompt:?}",
+            key.0
         ),
         None => {}
     }
@@ -91,13 +75,10 @@ async fn take_footer(
 }
 
 /// Writes the footer for the player's next grow in the background.
-fn prepare_footer(footers: PreparedFooters, key: (String, String), facts: FooterFacts) {
+fn prepare_footer(footers: PreparedFooters, key: (String, String), prompt: String) {
     tokio::spawn(async move {
-        if let Some(line) = llm::commentary(&facts.prompt()).await {
-            footers
-                .write()
-                .await
-                .insert(key, PreparedFooter { line, facts });
+        if let Some(line) = llm::commentary(&prompt).await {
+            footers.write().await.insert(key, (prompt, line));
         }
     });
 }
@@ -267,12 +248,12 @@ pub async fn run(cmd: &Cmd<'_>) -> CommandResult {
         format!("\n**Boosts:** {}", boosts.join(" · "))
     };
     let footer_key = (cmd.user.clone(), cmd.guild.clone());
-    let facts = FooterFacts {
-        name: cmd.interaction.user.display_name().to_string(),
-        size: size_class(new_length, rank, db::grown_players(db, &cmd.guild).await?),
-    };
-    let footer = take_footer(&cmd.bot.grow_footers, &footer_key, &facts).await;
-    prepare_footer(cmd.bot.grow_footers.clone(), footer_key, facts);
+    let prompt = footer_prompt(
+        cmd.interaction.user.display_name(),
+        size_class(new_length, rank, db::grown_players(db, &cmd.guild).await?),
+    );
+    let footer = take_footer(&cmd.bot.grow_footers, &footer_key, &prompt).await;
+    prepare_footer(cmd.bot.grow_footers.clone(), footer_key, prompt);
 
     cmd.reply(
         embed(
@@ -415,30 +396,20 @@ mod tests {
         }
     }
 
-    fn facts(name: &str, size: &'static str) -> FooterFacts {
-        FooterFacts {
-            name: name.to_string(),
-            size,
-        }
-    }
-
-    async fn prepared(name: &str, size: &'static str) -> (PreparedFooters, (String, String)) {
+    async fn prepared(prompt: &str) -> (PreparedFooters, (String, String)) {
         let footers = PreparedFooters::default();
         let key = ("1".to_string(), "2".to_string());
-        footers.write().await.insert(
-            key.clone(),
-            PreparedFooter {
-                line: "ai line".to_string(),
-                facts: facts(name, size),
-            },
-        );
+        footers
+            .write()
+            .await
+            .insert(key.clone(), (prompt.to_string(), "ai line".to_string()));
         (footers, key)
     }
 
     #[tokio::test]
-    async fn prepared_footer_is_used_once_while_facts_match() {
-        let (footers, key) = prepared("kuba", "big for this server").await;
-        let current = facts("kuba", "big for this server");
+    async fn prepared_footer_is_used_once_while_the_prompt_matches() {
+        let current = footer_prompt("kuba", "big for this server");
+        let (footers, key) = prepared(&current).await;
         assert_eq!(take_footer(&footers, &key, &current).await, "ai line");
         let next = take_footer(&footers, &key, &current).await;
         assert!(FOOTERS.contains(&next.as_str()));
@@ -447,10 +418,10 @@ mod tests {
     #[tokio::test]
     async fn stale_prepared_footer_is_dropped() {
         for current in [
-            facts("kuba2", "big for this server"),
-            facts("kuba", "the biggest on this server"),
+            footer_prompt("kuba2", "big for this server"),
+            footer_prompt("kuba", "the biggest on this server"),
         ] {
-            let (footers, key) = prepared("kuba", "big for this server").await;
+            let (footers, key) = prepared(&footer_prompt("kuba", "big for this server")).await;
             let footer = take_footer(&footers, &key, &current).await;
             assert!(FOOTERS.contains(&footer.as_str()), "{current:?}");
             assert!(footers.read().await.is_empty());
