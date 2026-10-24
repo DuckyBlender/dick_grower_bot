@@ -94,7 +94,9 @@ cargo run --release
 On startup the bot adds any columns that are missing from older databases. It does not create tables, so run `sqlx migrate run` for a new database.
 
 ### Docker Deployment
-`deploy.sh` pulls the latest code and builds the image. If the build succeeds, it stops the old container, backs up `database.sqlite` (keeping the 10 newest backups) and starts the new container. `.env` is passed at runtime and is never copied into the image.
+`deploy.sh` pulls the latest code and builds the image. If the build succeeds, it stops the old container, backs up `data/database.sqlite` (keeping the 10 newest backups) and starts the new container. `.env` is passed at runtime and is never copied into the image.
+
+The container mounts the whole `data/` directory, because SQLite keeps its `-wal` and `-shm` files next to the database. On `docker stop` the bot shuts down cleanly and folds the WAL back into `database.sqlite`.
 
 ```bash
 ./deploy.sh

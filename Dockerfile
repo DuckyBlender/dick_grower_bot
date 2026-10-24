@@ -25,5 +25,7 @@ WORKDIR /app
 COPY --from=builder /app/target/release/dick_grower_bot /app/dick_grower_bot
 
 # Secrets are passed at runtime (`--env-file`), never baked into the image.
-ENV DATABASE_URL=sqlite:/app/database.sqlite
+# The whole directory is mounted, not just the file: SQLite keeps its -wal and
+# -shm files next to the database, and they must outlive the container.
+ENV DATABASE_URL=sqlite:/app/data/database.sqlite
 CMD ["/app/dick_grower_bot"]

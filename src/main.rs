@@ -192,7 +192,7 @@ async fn main() {
 
     let handler = Handler {
         bot: Arc::new(Bot {
-            db,
+            db: db.clone(),
             pvp_challenges: RwLock::new(HashMap::new()),
             grow_footers: PreparedFooters::default(),
         }),
@@ -204,7 +204,31 @@ async fn main() {
         .await
         .expect("Error creating client");
 
+    let shard_manager = client.shard_manager.clone();
+    tokio::spawn(async move {
+        shutdown_signal().await;
+        info!("Shutting down");
+        shard_manager.shutdown_all().await;
+    });
+
     if let Err(why) = client.start().await {
         error!("An error occurred while running the client: {why:?}");
+    }
+
+    // Closing the last connection checkpoints the WAL into the database file,
+    // so a stopped bot leaves a single self-contained file behind.
+    db.close().await;
+    info!("Database closed");
+}
+
+/// Waits for Ctrl+C or SIGTERM. The bot runs as PID 1 in Docker, where
+/// SIGTERM does nothing unless handled, so `docker stop` would otherwise
+/// end in a SIGKILL.
+async fn shutdown_signal() {
+    let mut terminate = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+        .expect("Failed to listen for SIGTERM");
+    tokio::select! {
+        _ = tokio::signal::ctrl_c() => {}
+        _ = terminate.recv() => {}
     }
 }
