@@ -1,6 +1,6 @@
-use log::warn;
+use log::{info, warn};
 use serde_json::{Value, json};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 const DEFAULT_LLM_URL: &str = "http://host.docker.internal:8081/v1/chat/completions";
 // The result is already posted; the commentary is only worth adding while people still look at it.
@@ -29,6 +29,7 @@ pub async fn commentary(event: &str) -> Option<String> {
         "chat_template_kwargs": {"enable_thinking": false},
     });
 
+    let started = Instant::now();
     let response = reqwest::Client::new()
         .post(&url)
         .timeout(TIMEOUT)
@@ -51,6 +52,11 @@ pub async fn commentary(event: &str) -> Option<String> {
     };
 
     let text = body["choices"][0]["message"]["content"].as_str()?;
+    // Grafana counts these to show how much the grower uses the local model.
+    info!(
+        "LLM commentary generated in {}ms",
+        started.elapsed().as_millis()
+    );
     clean(text)
 }
 
