@@ -23,8 +23,8 @@ pub fn register() -> CreateCommand {
         .description("Show this month's leaderboard, counting only what was grown this month")
         .add_option(
             CreateCommandOption::new(CommandOptionType::String, "scope", "Which players to rank")
-                .add_string_choice("This server", "server")
-                .add_string_choice("Global", "global"),
+                .add_string_choice("Global", "global")
+                .add_string_choice("This server", "server"),
         )
         .add_option(
             CreateCommandOption::new(CommandOptionType::String, "period", "Which season to show")
@@ -100,11 +100,11 @@ async fn own_standing(
 }
 
 pub async fn run(cmd: &Cmd<'_>) -> CommandResult {
-    let mut global = false;
+    let mut global = true;
     let mut previous = false;
     for option in cmd.interaction.data.options() {
         match (option.name, option.value) {
-            ("scope", ResolvedValue::String(value)) => global = value == "global",
+            ("scope", ResolvedValue::String(value)) => global = value != "server",
             ("period", ResolvedValue::String(value)) => previous = value == "previous",
             _ => {}
         }
@@ -175,9 +175,14 @@ pub async fn run(cmd: &Cmd<'_>) -> CommandResult {
     }
 
     cmd.edit(
-        embed(title, description, colors::GOLD).footer(CreateEmbedFooter::new(
-            "Only cm you grew yourself count. Gifts and battles don't.",
-        )),
+        embed(title, description, colors::GOLD).footer(CreateEmbedFooter::new(format!(
+            "Only cm you grew yourself count, not gifts or battles. {}",
+            if global {
+                "Pick scope: This server to see your server."
+            } else {
+                "Pick scope: Global to see everyone."
+            }
+        ))),
     )
     .await
 }
