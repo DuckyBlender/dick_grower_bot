@@ -12,7 +12,8 @@ pub async fn run(cmd: &Cmd<'_>) -> CommandResult {
         "`/grow` - Grow your dick (every {DEFAULT_COOLDOWN_MINUTES} minutes)\n\
          `/daily` - Claim a random perk once per UTC day\n\
          `/viagra` - +{}% growth for {} hours ({} hour cooldown)\n\
-         `/event` - View the current global event",
+         `/event` - View the current global event\n\
+         `/season` - This month's leaderboard of freshly grown cm",
         viagra::BOOST_PERCENT,
         viagra::DURATION_HOURS,
         viagra::COOLDOWN_HOURS

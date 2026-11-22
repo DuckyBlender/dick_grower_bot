@@ -6,6 +6,7 @@ pub mod global;
 pub mod grow;
 pub mod help;
 pub mod pvp;
+pub mod season;
 pub mod stats;
 pub mod top;
 pub mod viagra;
@@ -140,6 +141,7 @@ pub async fn dispatch(cmd: &Cmd<'_>) -> CommandResult {
         "viagra" => viagra::run(cmd).await,
         "daily" => daily::run(cmd).await,
         "event" => events::run(cmd).await,
+        "season" => season::run(cmd).await,
         other => {
             log::warn!("Received unknown command /{other}");
             Ok(())
@@ -160,6 +162,7 @@ pub fn definitions() -> Vec<CreateCommand> {
         viagra::register(),
         daily::register(),
         events::register(),
+        season::register(),
     ]
     .into_iter()
     .map(|command| {
