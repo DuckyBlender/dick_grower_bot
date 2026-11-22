@@ -1,5 +1,5 @@
 use crate::commands::grow::DEFAULT_COOLDOWN_MINUTES;
-use crate::commands::{Cmd, CommandResult, viagra};
+use crate::commands::{Cmd, CommandResult};
 use crate::utils::{colors, embed};
 use serenity::all::{CreateCommand, CreateEmbedFooter};
 
@@ -11,12 +11,8 @@ pub async fn run(cmd: &Cmd<'_>) -> CommandResult {
     let growing = format!(
         "`/grow` - Grow your dick (every {DEFAULT_COOLDOWN_MINUTES} minutes)\n\
          `/daily` - Claim a random perk once per UTC day\n\
-         `/viagra` - +{}% growth for {} hours ({} hour cooldown)\n\
          `/event` - View the current global event\n\
-         `/season` - This month's leaderboard of freshly grown cm",
-        viagra::BOOST_PERCENT,
-        viagra::DURATION_HOURS,
-        viagra::COOLDOWN_HOURS
+         `/season` - This month's leaderboard of freshly grown cm"
     );
 
     cmd.reply(

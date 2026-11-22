@@ -9,7 +9,6 @@ pub mod pvp;
 pub mod season;
 pub mod stats;
 pub mod top;
-pub mod viagra;
 
 use crate::{Bot, llm};
 use serenity::all::{
@@ -138,7 +137,6 @@ pub async fn dispatch(cmd: &Cmd<'_>) -> CommandResult {
         "dickoftheday" => dotd::run(cmd).await,
         "help" => help::run(cmd).await,
         "gift" => gift::run(cmd).await,
-        "viagra" => viagra::run(cmd).await,
         "daily" => daily::run(cmd).await,
         "event" => events::run(cmd).await,
         "season" => season::run(cmd).await,
@@ -159,7 +157,6 @@ pub fn definitions() -> Vec<CreateCommand> {
         dotd::register(),
         help::register(),
         gift::register(),
-        viagra::register(),
         daily::register(),
         events::register(),
         season::register(),

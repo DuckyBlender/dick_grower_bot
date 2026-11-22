@@ -18,7 +18,7 @@ const ACTIVATION_CHANCE: (u32, u32) = (1, 2);
 
 const GROWTH_BONUS_PERCENT: i64 = 25;
 const LOWER_COOLDOWN_MINUTES: i64 = 30;
-const LONGER_VIAGRA_HOURS: i64 = 12;
+const VIAGRA_RUSH_PERCENT: i64 = 50;
 const COMPACT_GROWTH_RANGE: (i64, i64) = (1, 5);
 const COMPACT_GROWTH_COOLDOWN_MINUTES: i64 = 15;
 const JACKPOT_EXTRA_CM: i64 = 25;
@@ -29,7 +29,7 @@ const COMMUNITY_POT_CM_PER_GROW: i64 = 1;
 const EVENT_WEIGHTS: [(EventKind, u32); 7] = [
     (EventKind::GrowthBonus, 1),
     (EventKind::LowerCooldown, 1),
-    (EventKind::LongerViagra, 1),
+    (EventKind::ViagraRush, 1),
     (EventKind::DoubleGrowthRoll, 1),
     (EventKind::CompactGrowth, 1),
     (EventKind::JackpotGrowth, 1),
@@ -40,7 +40,7 @@ const EVENT_WEIGHTS: [(EventKind, u32); 7] = [
 pub enum EventKind {
     GrowthBonus,
     LowerCooldown,
-    LongerViagra,
+    ViagraRush,
     DoubleGrowthRoll,
     CompactGrowth,
     JackpotGrowth,
@@ -52,7 +52,7 @@ impl EventKind {
         match self {
             EventKind::GrowthBonus => "growth_bonus",
             EventKind::LowerCooldown => "lower_cooldown",
-            EventKind::LongerViagra => "longer_viagra",
+            EventKind::ViagraRush => "viagra_rush",
             EventKind::DoubleGrowthRoll => "double_growth_roll",
             EventKind::CompactGrowth => "compact_growth",
             EventKind::JackpotGrowth => "jackpot_growth",
@@ -71,7 +71,7 @@ impl EventKind {
         match self {
             EventKind::GrowthBonus => "Growth Surge",
             EventKind::LowerCooldown => "Fast Hands",
-            EventKind::LongerViagra => "Extended Pharmacy Hours",
+            EventKind::ViagraRush => "Viagra Rush",
             EventKind::DoubleGrowthRoll => "Double Trouble",
             EventKind::CompactGrowth => "Quick Sprouts",
             EventKind::JackpotGrowth => "Jackpot Window",
@@ -87,8 +87,8 @@ impl EventKind {
             EventKind::LowerCooldown => format!(
                 "The /grow cooldown is lowered to **{LOWER_COOLDOWN_MINUTES} minutes** while this event is active."
             ),
-            EventKind::LongerViagra => format!(
-                "New /viagra activations last **{LONGER_VIAGRA_HOURS} hours** during this event."
+            EventKind::ViagraRush => format!(
+                "Free viagra for everyone! All /grow results get **+{VIAGRA_RUSH_PERCENT}% growth** while it lasts."
             ),
             EventKind::DoubleGrowthRoll => {
                 "Every /grow rolls twice and keeps the better result.".to_string()
@@ -111,7 +111,7 @@ impl EventKind {
         match self {
             EventKind::GrowthBonus => GROWTH_BONUS_PERCENT,
             EventKind::LowerCooldown => LOWER_COOLDOWN_MINUTES,
-            EventKind::LongerViagra => LONGER_VIAGRA_HOURS,
+            EventKind::ViagraRush => VIAGRA_RUSH_PERCENT,
             EventKind::DoubleGrowthRoll => 2,
             EventKind::CompactGrowth => COMPACT_GROWTH_COOLDOWN_MINUTES,
             EventKind::JackpotGrowth => JACKPOT_EXTRA_CM,
@@ -132,7 +132,8 @@ pub struct GlobalEvent {
 
 impl GlobalEvent {
     pub fn growth_bonus_percent(&self) -> Option<i64> {
-        (self.kind == EventKind::GrowthBonus).then_some(self.bonus_value)
+        matches!(self.kind, EventKind::GrowthBonus | EventKind::ViagraRush)
+            .then_some(self.bonus_value)
     }
 
     pub fn grow_cooldown_minutes(&self) -> Option<i64> {
@@ -141,10 +142,6 @@ impl GlobalEvent {
             EventKind::CompactGrowth => Some(COMPACT_GROWTH_COOLDOWN_MINUTES),
             _ => None,
         }
-    }
-
-    pub fn viagra_duration_hours(&self) -> Option<i64> {
-        (self.kind == EventKind::LongerViagra).then_some(self.bonus_value)
     }
 
     pub fn growth_range(&self) -> Option<(i64, i64)> {

@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT length, dick_of_day_count, last_grow, growth_count,\n                pvp_wins, pvp_losses, pvp_max_streak, pvp_current_streak, cm_won, cm_lost,\n                daily_streak, best_daily_streak, viagra_last_used, viagra_active_until,\n                daily_growth_boost_percent, daily_cooldown_skips, daily_streak_savers,\n                daily_lucky_rolls\n         FROM dicks\n         WHERE user_id = ? AND guild_id = ?",
+  "query": "SELECT length, dick_of_day_count, last_grow, growth_count,\n                pvp_wins, pvp_losses, pvp_max_streak, pvp_current_streak, cm_won, cm_lost,\n                daily_streak, best_daily_streak,\n                daily_growth_boost_percent, daily_cooldown_skips, daily_streak_savers,\n                daily_lucky_rolls\n         FROM dicks\n         WHERE user_id = ? AND guild_id = ?",
   "describe": {
     "columns": [
       {
@@ -136,30 +136,8 @@
         }
       },
       {
-        "name": "viagra_last_used",
-        "ordinal": 12,
-        "type_info": "Text",
-        "origin": {
-          "Table": {
-            "table": "dicks",
-            "name": "viagra_last_used"
-          }
-        }
-      },
-      {
-        "name": "viagra_active_until",
-        "ordinal": 13,
-        "type_info": "Text",
-        "origin": {
-          "Table": {
-            "table": "dicks",
-            "name": "viagra_active_until"
-          }
-        }
-      },
-      {
         "name": "daily_growth_boost_percent",
-        "ordinal": 14,
+        "ordinal": 12,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -170,7 +148,7 @@
       },
       {
         "name": "daily_cooldown_skips",
-        "ordinal": 15,
+        "ordinal": 13,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -181,7 +159,7 @@
       },
       {
         "name": "daily_streak_savers",
-        "ordinal": 16,
+        "ordinal": 14,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -192,7 +170,7 @@
       },
       {
         "name": "daily_lucky_rolls",
-        "ordinal": 17,
+        "ordinal": 15,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -218,13 +196,11 @@
       false,
       false,
       false,
-      true,
-      true,
       false,
       false,
       false,
       false
     ]
   },
-  "hash": "1f071434cb9948a9c7429c0e98cd62fc97ca0e33fa0dd679bd3d2eabf84c7c2a"
+  "hash": "cd83c2eaba9000e0d2f704ca3be823fbcec29b022b268d02216bde0e0f5fca1f"
 }

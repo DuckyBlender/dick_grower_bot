@@ -1,5 +1,5 @@
 use crate::commands::events::active_event;
-use crate::commands::{Cmd, CommandResult, grow, viagra};
+use crate::commands::{Cmd, CommandResult, grow};
 use crate::db;
 use crate::time;
 use crate::utils::{colors, embed, escape_markdown, ordinal, pluralize, rank_title, size_class};
@@ -38,7 +38,7 @@ pub async fn run(cmd: &Cmd<'_>) -> CommandResult {
     let Some(stats) = sqlx::query!(
         "SELECT length, dick_of_day_count, last_grow, growth_count,
                 pvp_wins, pvp_losses, pvp_max_streak, pvp_current_streak, cm_won, cm_lost,
-                daily_streak, best_daily_streak, viagra_last_used, viagra_active_until,
+                daily_streak, best_daily_streak,
                 daily_growth_boost_percent, daily_cooldown_skips, daily_streak_savers,
                 daily_lucky_rolls
          FROM dicks
@@ -70,15 +70,6 @@ pub async fn run(cmd: &Cmd<'_>) -> CommandResult {
         (None, false) => "✅ Ready to grow".to_string(),
         (Some(ready), _) => format!("⏰ Next grow {}", time::relative(ready)),
     };
-
-    let viagra_status =
-        if let Some(until) = viagra::active_until(stats.viagra_active_until.as_deref()) {
-            format!("💊 **Active**, wears off {}", time::relative(until))
-        } else if let Some(ready) = viagra::cooldown_ends(stats.viagra_last_used.as_deref()) {
-            format!("⏳ Available {}", time::relative(ready))
-        } else {
-            "✅ Available now".to_string()
-        };
 
     let mut perks = Vec::new();
     if stats.daily_growth_boost_percent > 0 {
@@ -151,7 +142,6 @@ pub async fn run(cmd: &Cmd<'_>) -> CommandResult {
         pluralize(stats.dick_of_day_count, "time", "times"),
         true,
     )
-    .field("💊 Viagra", viagra_status, true)
     .field("🎒 Perks", perks, true)
     .field(
         "⚔️ Battle Stats",

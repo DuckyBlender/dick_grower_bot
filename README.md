@@ -10,13 +10,12 @@ Commands work in servers, and in group chats and DMs once a user installs the bo
 |---------|-------------|----------|
 | `/grow` | Grow 1-10 cm, plus any active boosts | 60 minutes |
 | `/daily` | Claim a random perk | Once per UTC day |
-| `/viagra` | +20% growth for 6 hours | 20 hours |
 | `/event` | Show the current global event, or when the next one may start | None |
 | `/pvp <bet>` | Open a dick battle anyone can accept | None |
 | `/gift <user> <amount>` | Give some of your length to someone smaller. A gift can't leave the recipient bigger than the giver, so alt accounts can't feed a main | None |
 | `/season [scope] [period]` | Leaderboard of cm grown in the current or previous UTC month, globally by default or for this server with `scope`. Gifts and battles don't count | None |
 | `/dickoftheday` | Award 10-25 cm to a random active grower | Once per server per UTC day |
-| `/stats [user]` | Length, rank, streaks, perks, viagra and battle stats | None |
+| `/stats [user]` | Length, rank, streaks, perks and battle stats | None |
 | `/top` | Server top 10, plus your own position | None |
 | `/global` | Global top 10 across all servers | None |
 | `/help` | Command overview | None |
@@ -25,7 +24,7 @@ Commands work in servers, and in group chats and DMs once a user installs the bo
 
 ### Growing
 - `/grow` adds 1-10 cm and is always positive.
-- Percentage boosts (viagra, daily boost, Growth Surge event) are added together and applied to the roll.
+- Percentage boosts (daily boost, Growth Surge and Viagra Rush events) are added together and applied to the roll.
 - The reply shows your new length, server rank, every boost that applied and when you can grow next.
 - The footer is a comment from the AI commentator, written in advance for your next grow (see below).
 
@@ -50,7 +49,7 @@ Every 4 hours, on the UTC boundary (00:00, 04:00, ...), there is a 50% chance th
 |-------|--------|
 | Growth Surge | +25% growth |
 | Fast Hands | `/grow` cooldown drops to 30 minutes |
-| Extended Pharmacy Hours | New `/viagra` doses last 12 hours |
+| Viagra Rush | +50% growth |
 | Double Trouble | Every `/grow` rolls twice and keeps the better result |
 | Quick Sprouts | `/grow` gives 1-5 cm but has a 15 minute cooldown |
 | Jackpot Window | Each `/grow` has a 1 in 10 chance of +25 cm |
@@ -134,7 +133,7 @@ migrations/          # SQLx migrations
 ```
 
 ### Database Schema
-- `dicks`: one row per user per server, holding length, stats, perks, streaks and viagra state
+- `dicks`: one row per user per server, holding length, stats, perks, and streaks (the old `viagra_*` columns are no longer used)
 - `length_history`: every length change, with `growth_type` set to `grow`, `streak`, `daily_bonus`, `dotd`, `gift_sent`, `gift_received`, `pvp_won`, `pvp_lost` or `community_pot`
 - `guild_settings`: per-server state (last Dick of the Day)
 - `global_events`: past and current global events, including community pot payouts

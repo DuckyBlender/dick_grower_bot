@@ -1,5 +1,4 @@
 use crate::commands::events::{GlobalEvent, active_event, add_to_community_pot};
-use crate::commands::viagra;
 use crate::commands::{Cmd, CommandResult};
 use crate::db::{self, History};
 use crate::utils::{colors, embed, ordinal, pluralize, size_class};
@@ -105,7 +104,7 @@ pub async fn run(cmd: &Cmd<'_>) -> CommandResult {
     let event = active_event(cmd.bot).await?;
     let cooldown = cooldown_minutes(event.as_ref());
     let perks = sqlx::query!(
-        "SELECT daily_growth_boost_percent, daily_lucky_rolls, viagra_active_until
+        "SELECT daily_growth_boost_percent, daily_lucky_rolls
          FROM dicks WHERE user_id = ? AND guild_id = ?",
         cmd.user,
         cmd.guild
@@ -133,10 +132,6 @@ pub async fn run(cmd: &Cmd<'_>) -> CommandResult {
     let mut bonus_percent = 0;
     if lucky_roll {
         boosts.push("🍀 Lucky roll".to_string());
-    }
-    if viagra::active_until(perks.viagra_active_until.as_deref()).is_some() {
-        bonus_percent += viagra::BOOST_PERCENT;
-        boosts.push(format!("💊 Viagra +{}%", viagra::BOOST_PERCENT));
     }
     if perks.daily_growth_boost_percent > 0 {
         bonus_percent += perks.daily_growth_boost_percent;
