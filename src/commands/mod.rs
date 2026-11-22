@@ -14,7 +14,7 @@ use crate::{Bot, llm};
 use serenity::all::{
     CommandInteraction, Context, CreateCommand, CreateEmbed, CreateEmbedFooter,
     CreateInteractionResponse, CreateInteractionResponseMessage, EditInteractionResponse, GuildId,
-    InteractionContext,
+    InstallationContext, InteractionContext,
 };
 use std::fmt;
 
@@ -55,14 +55,27 @@ pub struct Cmd<'a> {
     pub ctx: &'a Context,
     pub bot: &'a Bot,
     pub interaction: &'a CommandInteraction,
-    pub guild_id: GuildId,
+    /// `None` in group chats and DMs, where the bot is installed on a user instead.
+    pub guild_id: Option<GuildId>,
     /// Invoking user's ID as stored in the database.
     pub user: String,
-    /// Guild ID as stored in the database.
+    /// What players compete within, as stored in the database: the guild ID, or the
+    /// channel ID in a group chat.
     pub guild: String,
 }
 
 impl Cmd<'_> {
+    /// Display name of the server or group chat the command ran in.
+    pub fn scope_name(&self) -> String {
+        match self.guild_id {
+            Some(guild_id) => guild_id.name(&self.ctx.cache).map_or_else(
+                || "This Server".to_string(),
+                |name| crate::utils::escape_markdown(&name),
+            ),
+            None => "This Group".to_string(),
+        }
+    }
+
     pub async fn respond(&self, message: CreateInteractionResponseMessage) -> CommandResult {
         self.interaction
             .create_response(&self.ctx.http, CreateInteractionResponse::Message(message))
@@ -149,6 +162,14 @@ pub fn definitions() -> Vec<CreateCommand> {
         events::register(),
     ]
     .into_iter()
-    .map(|command| command.contexts(vec![InteractionContext::Guild]))
+    .map(|command| {
+        // Installing the bot on a user makes it usable in group chats and other DMs.
+        command
+            .integration_types(vec![InstallationContext::Guild, InstallationContext::User])
+            .contexts(vec![
+                InteractionContext::Guild,
+                InteractionContext::PrivateChannel,
+            ])
+    })
     .collect()
 }

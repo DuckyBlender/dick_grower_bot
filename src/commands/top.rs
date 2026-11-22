@@ -93,10 +93,7 @@ pub async fn run(cmd: &Cmd<'_>) -> CommandResult {
     };
     description.push_str(&format!("\n{comment}"));
 
-    let guild_name = cmd
-        .guild_id
-        .name(&cmd.ctx.cache)
-        .map_or_else(|| "This Server".to_string(), |name| escape_markdown(&name));
+    let guild_name = cmd.scope_name();
 
     cmd.edit(
         embed(

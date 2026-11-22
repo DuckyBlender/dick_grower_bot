@@ -4,7 +4,7 @@ A Discord bot where users compete to grow the biggest virtual dick in their serv
 
 ## Commands
 
-All commands work in servers only. Each server has its own leaderboard and stats.
+Commands work in servers, and in group chats and DMs once a user installs the bot on their own account (enable **User Install** under Installation in the Discord Developer Portal). Each server or group chat has its own leaderboard and stats.
 
 | Command | Description | Cooldown |
 |---------|-------------|----------|

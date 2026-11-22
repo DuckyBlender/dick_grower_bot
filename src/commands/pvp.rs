@@ -7,8 +7,7 @@ use rand::RngExt;
 use serenity::all::{
     ButtonStyle, CommandOptionType, ComponentInteraction, Context, CreateActionRow, CreateButton,
     CreateCommand, CreateCommandOption, CreateEmbed, CreateEmbedFooter, CreateInteractionResponse,
-    CreateInteractionResponseMessage, EditInteractionResponse, GuildId, Mention, Mentionable,
-    UserId,
+    CreateInteractionResponseMessage, EditInteractionResponse, Mention, Mentionable, UserId,
 };
 use std::time::Instant;
 
@@ -18,7 +17,8 @@ pub const CANCEL_PREFIX: &str = "pvp_cancel:";
 
 pub struct PvpChallenge {
     challenger: UserId,
-    guild_id: GuildId,
+    /// Server or group chat the challenge was made in, as stored in the database.
+    guild: String,
     bet: i64,
     created_at: Instant,
 }
@@ -93,7 +93,7 @@ pub async fn run(cmd: &Cmd<'_>) -> CommandResult {
             challenge_id,
             PvpChallenge {
                 challenger,
-                guild_id: cmd.guild_id,
+                guild: cmd.guild.clone(),
                 bet,
                 created_at: Instant::now(),
             },
@@ -240,7 +240,7 @@ pub async fn handle_component(
         .await;
     }
 
-    let guild = challenge.guild_id.to_string();
+    let guild = challenge.guild.clone();
     let challenger_str = challenger.to_string();
     let acceptor_str = user.to_string();
     db::ensure_user(&bot.db, &acceptor_str, &guild).await?;

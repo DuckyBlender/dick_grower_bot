@@ -37,26 +37,13 @@ struct Handler {
 
 impl Handler {
     async fn handle_command(&self, ctx: &Context, command: &CommandInteraction) {
-        let Some(guild_id) = command.guild_id else {
-            // Commands are registered as guild-only; this only triggers for stale clients.
-            let response = CreateInteractionResponseMessage::new()
-                .embed(error_embed(
-                    "⚠️ Server Only Bot",
-                    "This bot can only be used in a server, not in direct messages.",
-                ))
-                .ephemeral(true);
-            if let Err(why) = command
-                .create_response(&ctx.http, CreateInteractionResponse::Message(response))
-                .await
-            {
-                error!("Cannot respond to DM command: {why}");
-            }
-            return;
-        };
+        // Group chats and DMs have no guild; players there compete within the channel.
+        let guild_id = command.guild_id;
+        let scope = guild_id.map_or_else(|| command.channel_id.to_string(), |id| id.to_string());
 
         info!(
             "Command invoked: /{} by {} (ID: {}) in guild {}",
-            command.data.name, command.user.name, command.user.id, guild_id
+            command.data.name, command.user.name, command.user.id, scope
         );
         let started = Instant::now();
         let cmd = Cmd {
@@ -65,7 +52,7 @@ impl Handler {
             interaction: command,
             guild_id,
             user: command.user.id.to_string(),
-            guild: guild_id.to_string(),
+            guild: scope,
         };
 
         if let Err(why) = commands::dispatch(&cmd).await {

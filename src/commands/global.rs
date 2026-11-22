@@ -10,7 +10,8 @@ pub fn register() -> CreateCommand {
 }
 
 /// Only Community servers are named publicly; everything else stays anonymous.
-fn guild_label(cache: &Cache, raw_id: &str) -> String {
+/// Group chats are stored under their channel ID, which is never a cached guild.
+pub fn guild_label(cache: &Cache, raw_id: &str) -> String {
     let guild = raw_id
         .parse::<u64>()
         .ok()
@@ -21,7 +22,7 @@ fn guild_label(cache: &Cache, raw_id: &str) -> String {
             escape_markdown(&guild.name)
         }
         Some(_) => "a private server".to_string(),
-        None => "an unknown server".to_string(),
+        None => "somewhere private".to_string(),
     }
 }
 
