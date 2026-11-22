@@ -13,7 +13,7 @@ All commands work in servers only. Each server has its own leaderboard and stats
 | `/viagra` | +20% growth for 6 hours | 20 hours |
 | `/event` | Show the current global event, or when the next one may start | None |
 | `/pvp <bet>` | Open a dick battle anyone can accept | None |
-| `/gift <user> <amount>` | Give some of your length to someone else | None |
+| `/gift <user> <amount>` | Give some of your length to someone smaller. A gift can't leave the recipient bigger than the giver, so alt accounts can't feed a main | None |
 | `/dickoftheday` | Award 10-25 cm to a random active grower | Once per server per UTC day |
 | `/stats [user]` | Length, rank, streaks, perks, viagra and battle stats | None |
 | `/top` | Server top 10, plus your own position | None |

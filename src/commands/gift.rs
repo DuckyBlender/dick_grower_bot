@@ -72,29 +72,45 @@ pub async fn run(cmd: &Cmd<'_>) -> CommandResult {
     db::ensure_user(db, &recipient_id, &cmd.guild).await?;
 
     let mut tx = db.begin().await?;
-    // The balance check is part of the UPDATE so concurrent gifts can't overdraw.
+    // The balance and downhill checks are part of the UPDATE so concurrent gifts can't
+    // overdraw or slip past the rule.
     let giver_length = sqlx::query_scalar!(
-        "UPDATE dicks SET length = length - ?
-         WHERE user_id = ? AND guild_id = ? AND length >= ?
+        "UPDATE dicks SET length = length - ?1
+         WHERE user_id = ?2 AND guild_id = ?3 AND length >= ?1
+           AND length - ?1 >= ?1 + (SELECT length FROM dicks WHERE user_id = ?4 AND guild_id = ?3)
          RETURNING length",
         amount,
         cmd.user,
         cmd.guild,
-        amount
+        recipient_id
     )
     .fetch_optional(&mut *tx)
     .await?;
     let Some(giver_length) = giver_length else {
         drop(tx);
         let length = db::length(db, &cmd.user, &cmd.guild).await?;
-        return cmd
-            .reply_ephemeral(embed(
+        let recipient_length = db::length(db, &recipient_id, &cmd.guild).await?;
+        let (title, description) = if length < amount {
+            (
                 "❌ Insufficient Length",
                 format!(
                     "You only have **{length} cm** but you're trying to gift **{amount} cm**!\n\nYou can't give what you don't have. Grow more first!"
                 ),
-                colors::ERROR,
-            ))
+            )
+        } else {
+            let recipient = recipient.mention();
+            let description = match max_gift(length, recipient_length) {
+                0 => format!(
+                    "{recipient} has **{recipient_length} cm** and you have **{length} cm**.\n\nGifts only flow downhill, and there's no room left between you two."
+                ),
+                max => format!(
+                    "Gifts only flow downhill: a gift can't leave {recipient} bigger than you.\n\nYou have **{length} cm** and they have **{recipient_length} cm**, so the most you can gift is **{max} cm**."
+                ),
+            };
+            ("⛰️ Gifts Only Flow Downhill", description)
+        };
+        return cmd
+            .reply_ephemeral(embed(title, description, colors::ERROR))
             .await;
     };
     let recipient_length = sqlx::query_scalar!(
@@ -161,4 +177,26 @@ pub async fn run(cmd: &Cmd<'_>) -> CommandResult {
             ),
     )
     .await
+}
+
+/// Largest gift that doesn't leave the recipient bigger than the giver. Gifts only flow
+/// downhill so alt accounts can't funnel their growth into a bigger main profile.
+fn max_gift(giver: i64, recipient: i64) -> i64 {
+    ((giver - recipient) / 2).clamp(0, giver.max(0))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::max_gift;
+
+    #[test]
+    fn gifts_can_level_two_players_but_not_reverse_them() {
+        assert_eq!(max_gift(100, 0), 50);
+        assert_eq!(max_gift(101, 0), 50);
+        assert_eq!(max_gift(100, 99), 0);
+        assert_eq!(max_gift(100, 100), 0);
+        assert_eq!(max_gift(50, 300), 0);
+        // A recipient in debt can't be gifted more than the giver owns.
+        assert_eq!(max_gift(10, -1000), 10);
+    }
 }

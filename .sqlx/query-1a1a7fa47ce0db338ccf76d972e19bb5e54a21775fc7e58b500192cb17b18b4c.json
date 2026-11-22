@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "UPDATE dicks SET length = length - ?\n         WHERE user_id = ? AND guild_id = ? AND length >= ?\n         RETURNING length",
+  "query": "UPDATE dicks SET length = length - ?1\n         WHERE user_id = ?2 AND guild_id = ?3 AND length >= ?1\n           AND length - ?1 >= ?1 + (SELECT length FROM dicks WHERE user_id = ?4 AND guild_id = ?3)\n         RETURNING length",
   "describe": {
     "columns": [
       {
@@ -22,5 +22,5 @@
       false
     ]
   },
-  "hash": "348951e621e47d00aa295a4c539b076640fdc5a63626d5d297fed7499c7a7ee3"
+  "hash": "1a1a7fa47ce0db338ccf76d972e19bb5e54a21775fc7e58b500192cb17b18b4c"
 }

@@ -29,7 +29,7 @@ pub async fn run(cmd: &Cmd<'_>) -> CommandResult {
             "⚔️ Competing",
             "`/pvp <bet>` - Challenge anyone to a dick battle\n\
              `/dickoftheday` - Crown a random active grower (once per day)\n\
-             `/gift <user> <amount>` - Give some of your length away",
+             `/gift <user> <amount>` - Give length to someone smaller than you",
             false,
         )
         .field(
