@@ -219,23 +219,11 @@ pub async fn run(cmd: &Cmd<'_>) -> CommandResult {
     let rank = db::guild_rank(db, &cmd.guild, new_length).await?;
     let next_grow = time::now() + Duration::minutes(cooldown);
 
-    let (title, flavor, color) = match growth {
-        11.. => (
-            "🚀 INCREDIBLE GROWTH!",
-            "Careful, you might trip over it soon!",
-            0x00FF00,
-        ),
-        8..=10 => (
-            "🔥 Impressive Growth!",
-            "Keep up the good work, size king!",
-            0x33FF33,
-        ),
-        4..=7 => ("🌱 Solid Growth", "Every centimeter counts!", 0x66FF66),
-        _ => (
-            "📏 Modest Growth",
-            "Small steps lead to big achievements!",
-            0x99FF99,
-        ),
+    let (title, color) = match growth {
+        11.. => ("🚀 INCREDIBLE GROWTH!", 0x00FF00),
+        8..=10 => ("🔥 Impressive Growth!", 0x33FF33),
+        4..=7 => ("🌱 Solid Growth", 0x66FF66),
+        _ => ("📏 Modest Growth", 0x99FF99),
     };
     let boosts = if boosts.is_empty() {
         String::new()
@@ -256,8 +244,7 @@ pub async fn run(cmd: &Cmd<'_>) -> CommandResult {
             format!(
                 "Your dick grew by **+{growth} cm** and is now **{new_length} cm** long!{boosts}\n\n\
                  🏅 Server rank: **{}**\n\
-                 ⏰ Next grow: {}\n\n\
-                 *{flavor}*",
+                 ⏰ Next grow: {}",
                 ordinal(rank),
                 time::relative(next_grow)
             ),

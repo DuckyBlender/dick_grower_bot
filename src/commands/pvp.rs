@@ -7,7 +7,7 @@ use rand::RngExt;
 use serenity::all::{
     ButtonStyle, CommandOptionType, ComponentInteraction, Context, CreateActionRow, CreateButton,
     CreateCommand, CreateCommandOption, CreateEmbed, CreateEmbedFooter, CreateInteractionResponse,
-    CreateInteractionResponseMessage, EditInteractionResponse, Mention, Mentionable, UserId,
+    CreateInteractionResponseMessage, EditInteractionResponse, Mentionable, UserId,
 };
 use std::time::Instant;
 
@@ -400,10 +400,7 @@ pub async fn handle_component(
 
     let results = embed(
         "🏆 Dick Battle Results!",
-        format!(
-            "👑 {winner_mention} won **{bet} cm** from {loser_mention}!{streak_comment}\n\n{}",
-            taunt(winner_roll - loser_roll, bet, winner_mention, loser_mention)
-        ),
+        format!("👑 {winner_mention} won **{bet} cm** from {loser_mention}!{streak_comment}"),
         colors::SUCCESS,
     )
     .field(
@@ -450,33 +447,6 @@ pub async fn handle_component(
         }
     }
     Ok(())
-}
-
-fn taunt(margin: i64, bet: i64, winner: Mention, loser: Mention) -> String {
-    match margin {
-        51.. if bet >= 30 => format!(
-            "💀 It wasn't even close! {winner}'s dick absolutely DEMOLISHED {loser}'s in a historic beatdown! Those {bet} centimeters will be remembered for generations! 📜"
-        ),
-        51.. => format!(
-            "💀 It wasn't even close! {winner}'s dick destroyed {loser}'s in an absolute massacre! ⚰️"
-        ),
-        21.. if bet >= 20 => format!(
-            "🏆 {winner}'s dick clearly outclassed {loser}'s in this epic showdown! That's {bet} cm of pride changing hands!"
-        ),
-        21.. => format!("🏆 {winner}'s dick clearly outclassed {loser}'s in this epic showdown!"),
-        6.. if bet >= 15 => format!(
-            "🥇 A close match, but {winner}'s dick had just enough extra length to claim victory and snatch those {bet} valuable centimeters!"
-        ),
-        6.. => format!(
-            "🥇 A close match, but {winner}'s dick had just enough extra length to claim victory!"
-        ),
-        _ if bet >= 25 => format!(
-            "😱 WHAT A NAIL-BITER! {winner}'s dick barely edged out {loser}'s by a hair's width! Those {bet} centimeters were almost too close to call!"
-        ),
-        _ => format!(
-            "😮 That was incredibly close! {winner}'s dick barely edged out {loser}'s by a hair's width!"
-        ),
-    }
 }
 
 async fn reply_ephemeral(

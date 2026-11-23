@@ -106,8 +106,7 @@ pub async fn run(cmd: &Cmd<'_>) -> CommandResult {
             "After careful consideration, the Dick of the Day award goes to... {mention}!\n\n\
              This \"**{}**\" has been awarded a bonus of **+{bonus} cm**, bringing their total to **{new_length} cm**!\n\n\
              🏅 Server rank: **{}**\n\
-             ⏰ Next Dick of the Day: {}\n\n\
-             Congratulations on your outstanding achievement in the field of... length!",
+             ⏰ Next Dick of the Day: {}",
             rank_title(rank),
             ordinal(rank),
             time::relative(time::next_utc_midnight())
