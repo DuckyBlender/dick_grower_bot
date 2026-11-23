@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT length, dick_of_day_count, last_grow, growth_count,\n                pvp_wins, pvp_losses, pvp_max_streak, pvp_current_streak, cm_won, cm_lost,\n                daily_streak, best_daily_streak,\n                daily_growth_boost_percent, daily_cooldown_skips, daily_streak_savers,\n                daily_lucky_rolls\n         FROM dicks\n         WHERE user_id = ? AND guild_id = ?",
+  "query": "SELECT length, dick_of_day_count, last_grow, growth_count,\n                pvp_wins, pvp_losses, pvp_max_streak, pvp_current_streak, cm_won, cm_lost,\n                daily_streak, best_daily_streak,\n                daily_growth_boost_percent, daily_cooldown_skips, daily_streak_savers,\n                daily_lucky_rolls, viagra_pill_pending\n         FROM dicks\n         WHERE user_id = ? AND guild_id = ?",
   "describe": {
     "columns": [
       {
@@ -178,6 +178,17 @@
             "name": "daily_lucky_rolls"
           }
         }
+      },
+      {
+        "name": "viagra_pill_pending",
+        "ordinal": 16,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "dicks",
+            "name": "viagra_pill_pending"
+          }
+        }
       }
     ],
     "parameters": {
@@ -199,8 +210,9 @@
       false,
       false,
       false,
+      false,
       false
     ]
   },
-  "hash": "cd83c2eaba9000e0d2f704ca3be823fbcec29b022b268d02216bde0e0f5fca1f"
+  "hash": "76ec956fa0907d7cf71b0cb5217bed21598a22ff9171c179218fb019c5bfa01e"
 }

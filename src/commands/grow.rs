@@ -1,5 +1,5 @@
 use crate::commands::events::{GlobalEvent, active_event, add_to_community_pot};
-use crate::commands::{Cmd, CommandResult};
+use crate::commands::{Cmd, CommandResult, viagra};
 use crate::db::{self, History};
 use crate::utils::{colors, embed, ordinal, pluralize, size_class};
 use crate::{llm, time};
@@ -104,7 +104,7 @@ pub async fn run(cmd: &Cmd<'_>) -> CommandResult {
     let event = active_event(cmd.bot).await?;
     let cooldown = cooldown_minutes(event.as_ref());
     let perks = sqlx::query!(
-        "SELECT daily_growth_boost_percent, daily_lucky_rolls
+        "SELECT length, daily_growth_boost_percent, daily_lucky_rolls, viagra_pill_pending
          FROM dicks WHERE user_id = ? AND guild_id = ?",
         cmd.user,
         cmd.guild
@@ -118,15 +118,22 @@ pub async fn run(cmd: &Cmd<'_>) -> CommandResult {
         .as_ref()
         .and_then(GlobalEvent::growth_range)
         .unwrap_or(BASE_GROWTH_RANGE);
-    let roll = {
+    let (first_roll, best_roll) = {
         let mut rng = rand::rng();
         let first = rng.random_range(min..=max);
-        if lucky_roll || event_double_roll {
-            first.max(rng.random_range(min..=max))
-        } else {
-            first
-        }
+        (first, first.max(rng.random_range(min..=max)))
     };
+    let roll = if lucky_roll || event_double_roll {
+        best_roll
+    } else {
+        first_roll
+    };
+
+    // A pill taken with /viagra doubles this grow, or backfires: the player loses a plain
+    // roll instead, and their other perks are left untouched for the next grow.
+    let pill = perks.viagra_pill_pending > 0;
+    let backfire = pill && rand::rng().random_ratio(viagra::BACKFIRE_PERCENT, 100);
+    let perks_kept = backfire && (lucky_roll || perks.daily_growth_boost_percent > 0);
 
     let mut boosts = Vec::new();
     let mut bonus_percent = 0;
@@ -148,23 +155,37 @@ pub async fn run(cmd: &Cmd<'_>) -> CommandResult {
     }
 
     let mut growth = (roll as f64 * (100 + bonus_percent) as f64 / 100.0).round() as i64;
+    if pill {
+        growth *= 2;
+        boosts.push("💊 Viagra ×2".to_string());
+    }
     if let Some(jackpot) = event.as_ref().and_then(GlobalEvent::roll_jackpot) {
         growth += jackpot;
         boosts.push(format!("🎰 Jackpot +{jackpot} cm"));
     }
+    if backfire {
+        growth = -first_roll.min(perks.length.max(0));
+        boosts.clear();
+    }
 
     // The cooldown check and the growth are a single statement, so spamming /grow can't
     // sneak in extra growths. One-shot perks are consumed in the same statement.
-    let lucky_used = i64::from(lucky_roll);
+    let lucky_used = i64::from(lucky_roll && !backfire);
+    let boost_kept = i64::from(backfire);
+    let pill_used = i64::from(pill);
     let cooldown_modifier = format!("-{cooldown} minutes");
     let mut new_length = sqlx::query_scalar!(
         "UPDATE dicks
          SET length = length + ?, last_grow = datetime('now'), growth_count = growth_count + 1,
-             daily_growth_boost_percent = 0, daily_lucky_rolls = MAX(daily_lucky_rolls - ?, 0)
+             daily_growth_boost_percent = daily_growth_boost_percent * ?,
+             daily_lucky_rolls = MAX(daily_lucky_rolls - ?, 0),
+             viagra_pill_pending = MAX(viagra_pill_pending - ?, 0)
          WHERE user_id = ? AND guild_id = ? AND last_grow <= datetime('now', ?)
          RETURNING length",
         growth,
+        boost_kept,
         lucky_used,
+        pill_used,
         cmd.user,
         cmd.guild,
         cooldown_modifier
@@ -176,12 +197,16 @@ pub async fn run(cmd: &Cmd<'_>) -> CommandResult {
         new_length = sqlx::query_scalar!(
             "UPDATE dicks
              SET length = length + ?, last_grow = datetime('now'), growth_count = growth_count + 1,
-                 daily_growth_boost_percent = 0, daily_lucky_rolls = MAX(daily_lucky_rolls - ?, 0),
+                 daily_growth_boost_percent = daily_growth_boost_percent * ?,
+             daily_lucky_rolls = MAX(daily_lucky_rolls - ?, 0),
+                 viagra_pill_pending = MAX(viagra_pill_pending - ?, 0),
                  daily_cooldown_skips = daily_cooldown_skips - 1
              WHERE user_id = ? AND guild_id = ? AND daily_cooldown_skips > 0
              RETURNING length",
             growth,
+            boost_kept,
             lucky_used,
+            pill_used,
             cmd.user,
             cmd.guild
         )
@@ -220,6 +245,7 @@ pub async fn run(cmd: &Cmd<'_>) -> CommandResult {
     let next_grow = time::now() + Duration::minutes(cooldown);
 
     let (title, color) = match growth {
+        _ if backfire => ("💥 Side Effects!", colors::ERROR),
         11.. => ("🚀 INCREDIBLE GROWTH!", 0x00FF00),
         8..=10 => ("🔥 Impressive Growth!", 0x33FF33),
         4..=7 => ("🌱 Solid Growth", 0x66FF66),
@@ -230,9 +256,42 @@ pub async fn run(cmd: &Cmd<'_>) -> CommandResult {
     } else {
         format!("\n**Boosts:** {}", boosts.join(" · "))
     };
+    let name = cmd.interaction.user.display_name();
+    let details = format!(
+        "\n\n🏅 Server rank: **{}**\n⏰ Next grow: {}",
+        ordinal(rank),
+        time::relative(next_grow)
+    );
+
+    if backfire {
+        // The reason already is the joke, so the footer stays factual. The prepared AI
+        // footer was written for a normal grow and is kept for the next one.
+        let kept = if perks_kept {
+            "\nYour other perks were spared for your next grow."
+        } else {
+            ""
+        };
+        return cmd
+            .reply(
+                embed(
+                    title,
+                    format!(
+                        "Your dick shrank by **{} cm** and is now **{new_length} cm** long!\n*{}*{kept}{boosts}{details}",
+                        -growth,
+                        viagra::backfire_reason()
+                    ),
+                    color,
+                )
+                .footer(CreateEmbedFooter::new(
+                    "Viagra: doubled 3 times out of 4. Next pill after midnight UTC.",
+                )),
+            )
+            .await;
+    }
+
     let footer_key = (cmd.user.clone(), cmd.guild.clone());
     let prompt = footer_prompt(
-        cmd.interaction.user.display_name(),
+        name,
         size_class(new_length, rank, db::grown_players(db, &cmd.guild).await?),
     );
     let footer = take_footer(&cmd.bot.grow_footers, &footer_key, &prompt).await;
@@ -242,11 +301,7 @@ pub async fn run(cmd: &Cmd<'_>) -> CommandResult {
         embed(
             title,
             format!(
-                "Your dick grew by **+{growth} cm** and is now **{new_length} cm** long!{boosts}\n\n\
-                 🏅 Server rank: **{}**\n\
-                 ⏰ Next grow: {}",
-                ordinal(rank),
-                time::relative(next_grow)
+                "Your dick grew by **+{growth} cm** and is now **{new_length} cm** long!{boosts}{details}"
             ),
             color,
         )

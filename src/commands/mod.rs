@@ -9,6 +9,7 @@ pub mod pvp;
 pub mod season;
 pub mod stats;
 pub mod top;
+pub mod viagra;
 
 use crate::{Bot, llm};
 use serenity::all::{
@@ -140,6 +141,7 @@ pub async fn dispatch(cmd: &Cmd<'_>) -> CommandResult {
         "daily" => daily::run(cmd).await,
         "event" => events::run(cmd).await,
         "season" => season::run(cmd).await,
+        "viagra" => viagra::run(cmd).await,
         other => {
             log::warn!("Received unknown command /{other}");
             Ok(())
@@ -160,6 +162,7 @@ pub fn definitions() -> Vec<CreateCommand> {
         daily::register(),
         events::register(),
         season::register(),
+        viagra::register(),
     ]
     .into_iter()
     .map(|command| {

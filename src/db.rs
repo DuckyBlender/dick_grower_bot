@@ -21,6 +21,7 @@ const LATE_COLUMNS: &[(&str, &str, &str)] = &[
     ("dicks", "best_daily_streak", "INTEGER NOT NULL DEFAULT 0"),
     ("dicks", "last_streak_date", "TEXT DEFAULT NULL"),
     ("dicks", "streak_last_claimed", "TEXT DEFAULT NULL"),
+    ("dicks", "viagra_pill_pending", "INTEGER NOT NULL DEFAULT 0"),
     ("global_events", "pot_amount", "INTEGER NOT NULL DEFAULT 0"),
     ("global_events", "resolved_at", "TEXT DEFAULT NULL"),
 ];

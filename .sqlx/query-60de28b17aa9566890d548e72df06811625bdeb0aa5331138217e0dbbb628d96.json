@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE dicks\n             SET length = length + ?, last_grow = datetime('now'), growth_count = growth_count + 1,\n                 daily_growth_boost_percent = daily_growth_boost_percent * ?,\n             daily_lucky_rolls = MAX(daily_lucky_rolls - ?, 0),\n                 viagra_pill_pending = MAX(viagra_pill_pending - ?, 0),\n                 daily_cooldown_skips = daily_cooldown_skips - 1\n             WHERE user_id = ? AND guild_id = ? AND daily_cooldown_skips > 0\n             RETURNING length",
+  "describe": {
+    "columns": [
+      {
+        "name": "length",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "dicks",
+            "name": "length"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "60de28b17aa9566890d548e72df06811625bdeb0aa5331138217e0dbbb628d96"
+}

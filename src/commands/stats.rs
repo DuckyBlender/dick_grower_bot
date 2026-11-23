@@ -40,7 +40,7 @@ pub async fn run(cmd: &Cmd<'_>) -> CommandResult {
                 pvp_wins, pvp_losses, pvp_max_streak, pvp_current_streak, cm_won, cm_lost,
                 daily_streak, best_daily_streak,
                 daily_growth_boost_percent, daily_cooldown_skips, daily_streak_savers,
-                daily_lucky_rolls
+                daily_lucky_rolls, viagra_pill_pending
          FROM dicks
          WHERE user_id = ? AND guild_id = ?",
         user_id,
@@ -77,6 +77,9 @@ pub async fn run(cmd: &Cmd<'_>) -> CommandResult {
             "⚡ Next grow +{}%",
             stats.daily_growth_boost_percent
         ));
+    }
+    if stats.viagra_pill_pending > 0 {
+        perks.push("💊 Viagra pill waiting".to_string());
     }
     for (count, label) in [
         (stats.daily_cooldown_skips, "⏩ Cooldown skip"),

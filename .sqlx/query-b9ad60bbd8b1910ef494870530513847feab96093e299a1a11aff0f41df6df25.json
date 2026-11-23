@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT viagra_pill_pending FROM dicks WHERE user_id = ? AND guild_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "viagra_pill_pending",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "dicks",
+            "name": "viagra_pill_pending"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "b9ad60bbd8b1910ef494870530513847feab96093e299a1a11aff0f41df6df25"
+}

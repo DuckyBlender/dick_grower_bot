@@ -10,6 +10,7 @@ Commands work in servers, and in group chats and DMs once a user installs the bo
 |---------|-------------|----------|
 | `/grow` | Grow 1-10 cm, plus any active boosts | 60 minutes |
 | `/daily` | Claim a random perk | Once per UTC day |
+| `/viagra` | Take a pill for your next `/grow`: 75% chance it's doubled, 25% chance it backfires and you shrink by the roll | Once per UTC day |
 | `/event` | Show the current global event, or when the next one may start | None |
 | `/pvp <bet>` | Open a dick battle anyone can accept | None |
 | `/gift <user> <amount>` | Give some of your length to someone smaller. A gift can't leave the recipient bigger than the giver, so alt accounts can't feed a main | None |
@@ -23,7 +24,8 @@ Commands work in servers, and in group chats and DMs once a user installs the bo
 ## Game Mechanics
 
 ### Growing
-- `/grow` adds 1-10 cm and is always positive.
+- `/grow` adds 1-10 cm and is always positive, unless a `/viagra` pill backfires.
+- A `/viagra` pill waits for your next `/grow`, however long that takes. 75% of the time it doubles the growth (before any Jackpot bonus). The other 25% it backfires: you lose one plain roll instead (never going below 0 cm), the reply says why it went wrong, and your daily boost or lucky roll is kept for the next grow. A backfire still counts as a grow, so it also lowers your `/season` score.
 - Percentage boosts (daily boost, Growth Surge and Viagra Rush events) are added together and applied to the roll.
 - The reply shows your new length, server rank, every boost that applied and when you can grow next.
 - The footer is a comment from the AI commentator, written in advance for your next grow (see below).
@@ -133,7 +135,7 @@ migrations/          # SQLx migrations
 ```
 
 ### Database Schema
-- `dicks`: one row per user per server, holding length, stats, perks, and streaks (the old `viagra_*` columns are no longer used)
+- `dicks`: one row per user per server, holding length, stats, perks, streaks and the pending viagra pill (`viagra_last_used`, `viagra_pill_pending`; `viagra_active_until` is no longer used)
 - `length_history`: every length change, with `growth_type` set to `grow`, `streak`, `daily_bonus`, `dotd`, `gift_sent`, `gift_received`, `pvp_won`, `pvp_lost` or `community_pot`
 - `guild_settings`: per-server state (last Dick of the Day)
 - `global_events`: past and current global events, including community pot payouts

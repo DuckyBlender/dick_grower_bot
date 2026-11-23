@@ -11,6 +11,7 @@ pub async fn run(cmd: &Cmd<'_>) -> CommandResult {
     let growing = format!(
         "`/grow` - Grow your dick (every {DEFAULT_COOLDOWN_MINUTES} minutes)\n\
          `/daily` - Claim a random perk once per UTC day\n\
+         `/viagra` - Daily pill: next grow doubled, or it backfires\n\
          `/event` - View the current global event\n\
          `/season` - This month's leaderboard of freshly grown cm"
     );
